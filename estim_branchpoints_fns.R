@@ -11,11 +11,12 @@ library(doParallel)
 
 setDTthreads(1)
 
+print_tables = F
 
 #######
 ## make a new function that gives you a 'simple' p_der, with a linear change between the estimated endpoints on a branch
 
-add_linear_p_given_b_t_arcs <- function(sims.dat) {
+add_linear_p_given_b_t_arcs <- function(sims.dat, fixed_anc_p = 0.01, fixed_der_p = .99) {
   sims.dat$dt.simple_p_given_b_t_arcs <- data.table(expand.grid(v_gt=0:2,c_gt=0:2,a_gt=0:2,d_gt=0:2,branch=sims.dat$branches))
   sims.dat$dt.simple_p_given_b_t_arcs <- merge(sims.dat$dt.simple_p_given_b_t_arcs, sims.dat$branch.bounds, by='branch')
   sims.dat$dt.simple_p_given_b_t_arcs[, p.low := sims.dat$p_gt_given_b_t_arcs(branch, t.low, list(v_gt,c_gt,a_gt,d_gt), sims.dat),
@@ -23,11 +24,37 @@ add_linear_p_given_b_t_arcs <- function(sims.dat) {
   sims.dat$dt.simple_p_given_b_t_arcs[, p.high := sims.dat$p_gt_given_b_t_arcs(branch, t.high, list(v_gt,c_gt,a_gt,d_gt), sims.dat),
                                       keyby=.(v_gt,c_gt,a_gt,d_gt,branch)]
   setkey(sims.dat$dt.simple_p_given_b_t_arcs, v_gt,c_gt,a_gt,d_gt)
+
+  ## sites where all archaics are fixed aren't a good match for the simulations
+  ## both because they can be 'QC' sites, and thus
+  sims.dat$dt.simple_p_given_b_t_arcs[.(0,0,0,0), p.low := fixed_anc_p]
+  sims.dat$dt.simple_p_given_b_t_arcs[.(0,0,0,0), p.high := fixed_anc_p]
+  sims.dat$dt.simple_p_given_b_t_arcs[.(2,2,2,2), p.low := fixed_der_p]
+  sims.dat$dt.simple_p_given_b_t_arcs[.(2,2,2,2), p.high := fixed_der_p]
+
   sims.dat$simple_p_given_b_t_arcs <- function(my.b, my.t, my.gt, sims.dat) {
     sims.dat$dt.simple_p_given_b_t_arcs[my.gt][my.b == branch][, p.low + (my.t-t.low)/(t.high-t.low) * (p.high-p.low)]
   }
   sims.dat
 }
+# add_linear_p_given_b_t_arcs_even_for_fixed <- function(sims.dat) {
+#   sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed <- data.table(expand.grid(v_gt=0:2,c_gt=0:2,a_gt=0:2,d_gt=0:2,branch=sims.dat$branches))
+#   sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed <- merge(sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed, sims.dat$branch.bounds, by='branch')
+#   sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed[, p.low := sims.dat$p_gt_given_b_t_arcs(branch, t.low, list(v_gt,c_gt,a_gt,d_gt), sims.dat),
+#                                       keyby=.(v_gt,c_gt,a_gt,d_gt,branch)]
+#   sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed[, p.high := sims.dat$p_gt_given_b_t_arcs(branch, t.high, list(v_gt,c_gt,a_gt,d_gt), sims.dat),
+#                                       keyby=.(v_gt,c_gt,a_gt,d_gt,branch)]
+#   setkey(sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed, v_gt,c_gt,a_gt,d_gt)
+#   sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed[.(0,0,0,0), p.low := 0.001]
+#   sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed[.(0,0,0,0), p.high := 0.001]
+#   sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed[.(1,1,1,1), p.low := 0.999]
+#   sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed[.(1,1,1,1), p.high := 0.999]
+# 
+#   sims.dat$simple_p_given_b_t_arcs_even_p_for_fixed <- function(my.b, my.t, my.gt, sims.dat) {
+#     sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed[my.gt][my.b == branch][, p.low + (my.t-t.low)/(t.high-t.low) * (p.high-p.low)]
+#   }
+#   sims.dat
+# }
 if (F) {
   sims.dat$dt.simple_p_given_b_t_arcs[list(2,2,1,2)]['v' == branch]
   sims.dat$simple_p_given_b_t_arcs('v', .8, list(2,2,1,2), sims.dat)
@@ -110,6 +137,8 @@ if (F) {
 p_h_given_b_t <- function(dt.sed, sims.dat, gt, branch, branch_time, method) {
   ## p_gt_given_b_t_arcs gives p(H==der | etc)
   
+  dt.sed
+  
   if (method == 'full') {
     # cat('full')
     dt.p <- dt.sed[, .(p = sims.dat$p_gt_given_b_t_arcs(branch, branch_time, list(v_gt,c_gt,a_gt,d_gt), sims.dat)),
@@ -137,11 +166,24 @@ p_h_given_b_t <- function(dt.sed, sims.dat, gt, branch, branch_time, method) {
   ## the other sites we are considering are polymorphic in archaics
   ## WOULD HAVE TO CHANGE THIS if I add sites that are fixed in archaics but poly in MH
   ## - this is actually a lot of sites, so it would add more information
+  ##################
+  ###### THIS SHOULDN'T BE DONE HERE, RIGHT?  SHOULD BE DONE IN THE FUNCTIONS?  OR MAYBE NOT, THIS CAN BE A FLAG
+  ###### EITHER WAY, REMEMBER THIS, PUT A FLAG ON IT - IT TOTALLY OBVIATES CODE IN add_linear_p_given_b_t_arcs!!
+  ##################
   dt.p[v_gt == 2 & c_gt == 2 & a_gt == 2 & d_gt == 2, p := .999]
+  dt.p[v_gt == 0 & c_gt == 0 & a_gt == 0 & d_gt == 0, p := .004]
   ## at this point, p is p(H==der).  We want p(H==gt).  Flip if necessary.
   if (gt == 0) dt.p[, p := 1-p]
   ## unlike merge, plyr::join maintains the order of dt.sed
-  plyr::join(dt.sed[, .(v_gt,c_gt,a_gt,d_gt)], dt.p, by=c('v_gt','c_gt','a_gt','d_gt'))[, p]
+  # dt.sed.p = plyr::join(dt.sed[, .(v_gt,c_gt,a_gt,d_gt)], dt.p, by=c('v_gt','c_gt','a_gt','d_gt'))[, p]
+  dt.sed.p = plyr::join(dt.sed[, .(v_gt,c_gt,a_gt,d_gt)], dt.p, by=c('v_gt','c_gt','a_gt','d_gt'))
+  if (sum((dt.sed[, .(v_gt,c_gt,a_gt,d_gt)] == dt.sed.p[, .(v_gt,c_gt,a_gt,d_gt)]) == F) > 0) {
+    cat('join in p_h_given_b_t gives wrong order??\n')
+    print(knitr::kable(dt.sed))
+    print(knitr::kable(dt.sed.p))
+    return('hey')
+  }
+  dt.sed.p[, p]
 }
 if (F) {
   p_h_given_b_t(dt.sed.poly, sims.dat, gt = 1, branch = 'v', branch_time = .7) %>% head
@@ -227,6 +269,7 @@ q_theta <- function(dt.sed, mh_contam, faunal_prop, err_rate) {
   # cat('q_theta', mh_contam, faunal_prop, '\n')
   q_h0 <- p_O_given_h_theta(dt.sed, mh_contam, faunal_prop, 0, err_rate)
   q_h1 <- p_O_given_h_theta(dt.sed, mh_contam, faunal_prop, 1, err_rate)
+  if (print_tables) print(knitr::kable(dt.sed[, .(q_theta_h0 = log(q_h0) * gamma_h_0, q_theta_h1 = log(q_h1) * gamma_h_1)]))
   dt.sed[, sum(log(q_h0) * gamma_h_0 + log(q_h1) * gamma_h_1)]
 }
 if (F) {
@@ -285,11 +328,19 @@ calc_gamma_num <- function(dt.sed, gt, mh_contam, faunal_prop, err_rate, sims.da
   if (gt == 0) {
     p_O_h0 <- p_O_given_h_theta(dt.sed, mh_contam = mh_contam, faunal_prop = faunal_prop, gt = 0, err_rate = err_rate)
     p_H_h0 <- p_h_given_b_t(dt.sed, sims.dat = sims.dat, gt = 0, branch = my.branch, branch_time = branch_time, method = method)
+    if (print_tables) {
+      cat('\ncalc_gamma_num0:')
+      print(knitr::kable(data.table(p_O_h0 = p_O_h0, p_H_h0 = p_H_h0, p_O_h0_x_p_H_h0 = p_O_h0 * p_H_h0)))
+    }
     return(p_O_h0 * p_H_h0)
   }
   if (gt == 1) {
     p_O_h1 <- p_O_given_h_theta(dt.sed, mh_contam = mh_contam, faunal_prop = faunal_prop, gt = 1, err_rate = err_rate)
     p_H_h1 <- p_h_given_b_t(dt.sed, sims.dat = sims.dat, gt = 1, branch = my.branch, branch_time = branch_time, method = method)
+    if (print_tables) {
+      cat('\ncalc_gamma_num1:')
+      print(knitr::kable(data.table(p_O_h1 = p_O_h1, p_H_h1 = p_H_h1, p_O_h1_x_p_H_h1 = p_O_h1 * p_H_h1)))
+    }
     return(p_O_h1 * p_H_h1)
   }
 }
@@ -299,8 +350,12 @@ calc_manual_lik <- function(dt.sed, all.rg, sims.dat, dt.theta, err_rate, my.bra
   for (my.rg in all.rg) {
     mh_contam = dt.theta[rg == my.rg, mh_contam]
     faunal_prop = dt.theta[rg == my.rg, faunal_prop]
+    dt.sed.rg <- dt.sed[rg == my.rg]
     
-    g0 <- calc_gamma_num(dt.sed, gt=0,
+    #### should change calc_gamma_num to return a dt w/ g0 and g1 in it, to reduce time of calculation
+    #### would cut the grid search time by half (not that I really use that so much)
+    g0 <- calc_gamma_num(dt.sed.rg,
+                         gt=0,
                          mh_contam = mh_contam,
                          faunal_prop = faunal_prop,
                          err_rate = err_rate,
@@ -308,7 +363,8 @@ calc_manual_lik <- function(dt.sed, all.rg, sims.dat, dt.theta, err_rate, my.bra
                          my.branch = my.branch, 
                          branch_time = branch_time,
                          method = method)
-    g1 <- calc_gamma_num(dt.sed, gt=1,
+    g1 <- calc_gamma_num(dt.sed.rg, ## wtf, this used to be just dt.sed
+                         gt=1,
                          mh_contam = mh_contam,
                          faunal_prop = faunal_prop,
                          err_rate = err_rate,
@@ -470,14 +526,17 @@ if (F) {
 ################
 
 sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, max.iter = 20, ll.converge = 0, 
-                   set.branchtime = 'estim', set.mh_contam = 'estim', set.faunal_prop = 'estim', p_h_method = 'full') {
-  
+                   set.branchtime = 'estim', set.mh_contam = 'estim', set.faunal_prop = 'estim', p_h_method = 'full',
+                   fail_on_neg_change = F, fail_on_neg_change_q = F) {
+
+  # hey  
   ## save data to return
   ret = list()
   ret$ll.trace = c()
   ret$man.ll.trace = c()
   last.ll = -1e200
-  
+  last.iter.ll = -1e200
+
   # because you can't be sure that this isn't running in parallel..
   dt.sed.analysis <- data.table(dt.sed.analysis)
   
@@ -494,8 +553,8 @@ sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, max.i
   
   # initialized parameters. theta is different for each rg, but there's only one branch_time
   dt.theta = data.table(rg = all.rg,
-                        mh_contam = ifelse(set.mh_contam == 'estim', .1, set.mh_contam),
-                        faunal_prop = ifelse(set.faunal_prop == 'estim', .1, set.faunal_prop))
+                        mh_contam = ifelse(is.numeric(set.mh_contam), set.mh_contam, .1),
+                        faunal_prop = ifelse(is.numeric(set.faunal_prop), set.faunal_prop, .1))
   if (set.branchtime == 'estim' | set.branchtime == 'grid') {
     branch_time = sims.dat$bounds.for.branch(my.branch, which.bound = 'mid', sims.dat = sims.dat)
   } else if (branch.low <= set.branchtime &
@@ -517,6 +576,7 @@ sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, max.i
     ## for each read group, split dt.sed.analysis, and optimize theta using q_theta
     if (set.faunal_prop == 'estim' && set.mh_contam == 'estim') {
       for (my.rg in all.rg) {
+        dt.sed.analysis.rg <- dt.sed.analysis[rg == my.rg]
         q_params = c(mh_contam = dt.theta[rg == my.rg, mh_contam],
                      faunal_prop = dt.theta[rg == my.rg, faunal_prop])
         # o.theta = optim(q_params, function(params) -q_theta(dt.sed.analysis[rg == my.rg],
@@ -526,7 +586,7 @@ sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, max.i
         #                 control = list(), lower = 0.000001, upper = 0.999999, method = 'L-BFGS-B')
         o.theta = constrOptim(q_params, function(params) {
           # cat(params, '\n')
-          -q_theta(dt.sed.analysis[rg == my.rg],
+          -q_theta(dt.sed.analysis.rg,
                    mh_contam = params[1],
                    faunal_prop = params[2],
                    err_rate = err_rate)}, grad = NULL,
@@ -542,27 +602,43 @@ sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, max.i
       }
     } else if (set.mh_contam == 'estim') {
       for (my.rg in all.rg) {
+        dt.sed.analysis.rg <- dt.sed.analysis[rg == my.rg]
         q_params = c(mh_contam = dt.theta[rg == my.rg, mh_contam],
                      faunal_prop = dt.theta[rg == my.rg, faunal_prop])
         o.theta = optimize(function(my.mc) {
-          q_theta(dt.sed.analysis[rg == my.rg],
+          q_theta(dt.sed.analysis.rg,
                   mh_contam = my.mc,
                   faunal_prop = q_params[2],
                   err_rate = err_rate)},
-          c(1e-200, 1-q_params[1]-1e-200), maximum = T)
+          c(1e-200, 1-q_params[2]-1e-200), maximum = T)
+        dt.theta[rg == my.rg, mh_contam := o.theta$maximum]
+        dt.theta[rg == my.rg, faunal_prop := q_params[2]]
+      }
+    } else if (set.mh_contam == 'estim2') {
+      for (my.rg in all.rg) {
+        dt.sed.analysis.rg <- dt.sed.analysis[rg == my.rg]
+        q_params = c(mh_contam = dt.theta[rg == my.rg, mh_contam],
+                     faunal_prop = dt.theta[rg == my.rg, faunal_prop])
+        o.theta = optimize(function(my.mc) {
+          q_theta(dt.sed.analysis.rg,
+                  mh_contam = my.mc,
+                  faunal_prop = q_params[2],
+                  err_rate = err_rate)},
+          c(1e-200, 1-q_params[2]-1e-200), maximum = T)
         dt.theta[rg == my.rg, mh_contam := o.theta$maximum]
         dt.theta[rg == my.rg, faunal_prop := q_params[2]]
       }
     } else if (set.faunal_prop == 'estim') {
       for (my.rg in all.rg) {
+        dt.sed.analysis.rg <- dt.sed.analysis[rg == my.rg]
         q_params = c(mh_contam = dt.theta[rg == my.rg, mh_contam],
                      faunal_prop = dt.theta[rg == my.rg, faunal_prop])
         o.theta = optimize(function(my.fp) {
-          q_theta(dt.sed.analysis[rg == my.rg],
+          q_theta(dt.sed.analysis.rg,
                   mh_contam = q_params[1],
                   faunal_prop = my.fp,
                   err_rate = err_rate)},
-          c(1e-200, 1-q_params[2]-1e-200), maximum = T)
+          c(1e-200, 1-q_params[1]-1e-200), maximum = T)
         dt.theta[rg == my.rg, mh_contam := q_params[1]]
         dt.theta[rg == my.rg, faunal_prop := o.theta$maximum]
       }
@@ -594,7 +670,8 @@ sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, max.i
       
     } else {
       ## if we're not supposed to estimate branch time, just get the likelihood of the given branch time
-      ## TRUE? we don't actually have to calculate q_t, we don't use it, and the likelihood shouldn't change [it does change, because gamma changes - keeping it in for now]
+      ## TRUE? we don't actually have to calculate q_t, we don't use it, and the likelihood shouldn't change 
+      ## [it does change, because gamma changes - keeping it in for now] <- obv removed the q_t call
       o.t = list(objective = 0,
                  maximum = branch_time)
     }
@@ -615,17 +692,44 @@ sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, max.i
                                 branch_time = o.t$maximum,
                                 method = p_h_method)
     
+
     ## report results of this iteration
     ret$ll.trace <- c(ret$ll.trace, iter.ll)
     ret$man.ll.trace <- c(ret$man.ll.trace, manual.ll)
     ret$dt.theta.trace <- rbind(ret$dt.theta.trace, 
                                 data.table(dt.theta, iter = length(ret$man.ll.trace)))
     ret$branchtime.trace <- c(ret$branchtime.trace, o.t$maximum)
-    if (ll.converge != 0 & ll.converge > manual.ll-last.ll) break()
-    last.ll <- manual.ll
+
+    
+    if (nrow(dt.sed.analysis) < 10) {
+      print(knitr::kable(dt.sed.analysis))
+    }
+    
     print(knitr::kable(dt.theta))
-    cat('ITER', iter, iter.ll, manual.ll, my.branch, o.t$maximum, '\n')
+    print(sprintf('%g', dt.theta$mh_contam))
+    print(sprintf('%g', dt.theta$faunal_prop))
+    print(sprintf('%g', manual.ll-last.ll))
+    cat('ITER_man:', iter, manual.ll, last.ll, manual.ll-last.ll, my.branch, o.t$maximum, '\n')
+    cat('ITER_q  :', iter, iter.ll, last.iter.ll, iter.ll-last.iter.ll, my.branch, o.t$maximum, '\n')
+    # cat(sprintf('ITER_man: %d %10.10g %10.10g %10.10g %s %f\n', iter, manual.ll, last.ll, manual.ll-last.ll, my.branch, o.t$maximum))
+    # cat(sprintf('ITER_q  : %d %10.10g %10.10g %10.10g %s %f\n', iter, iter.ll, last.iter.ll, iter.ll-last.iter.ll, my.branch, o.t$maximum))
+    # cat('ITER_q  :', iter, iter.ll, last.iter.ll, iter.ll-last.iter.ll, my.branch, o.t$maximum, '\n')
     cat('\n')
+    
+    if (manual.ll-last.ll < 0 | iter.ll-last.iter.ll < 0 & fail_on_neg_change_q) {
+      cat('WARNING ERROR ETC ETC: likelihood went down in this iteration!', last.ll, manual.ll, manual.ll-last.ll, '\n')
+      cat(' -what about iter lik:                                        ', last.iter.ll, iter.ll, iter.ll-last.iter.ll, '\n')
+    }
+    if (manual.ll-last.ll < 0 & fail_on_neg_change) {
+      break()
+    }
+    if (iter.ll-last.iter.ll < 0 & fail_on_neg_change_q) {
+      break()
+    }
+    if (ll.converge != 0 & ll.converge > abs(manual.ll-last.ll)) break()
+    # if (ll.converge != 0 & ll.converge > manual.ll-last.ll) break()
+    last.ll <- manual.ll
+    last.iter.ll <- iter.ll
   }
   
   ret$dt.theta = dt.theta
@@ -829,9 +933,10 @@ if (F) {
 }
   
 
-eval_sed_t_and_mh <- function(dt.sed.poly.tst, p_h_method, max.iter = 100) {
+
+eval_sed_t_and_mh <- function(dt.sed.poly.tst, p_h_method, max.iter = 100, set.faunal_prop = 0) {
   ## constrain mh and faunal = 0, just estimate time with EM
-  x.em = sed_EM(dt.sed.poly.tst, sims.dat, my.branch = 'v', err_rate = 0.001, max.iter = 10, set.faunal_prop = 0, set.mh_contam = 0, p_h_method = p_h_method)
+  x.em = sed_EM(dt.sed.poly.tst, sims.dat, my.branch = 'v', err_rate = 0.001, max.iter = 4, set.faunal_prop = 0, set.mh_contam = 0, p_h_method = p_h_method)
   
   ## the ll goes up and down a bit in the trace sometimes?  just not 100% stable?
   # plot(tail(x.em$man.ll.trace,9))
@@ -839,17 +944,17 @@ eval_sed_t_and_mh <- function(dt.sed.poly.tst, p_h_method, max.iter = 100) {
   
   ## do "grid" search, just estimating time  
   dt.sed.poly.tst.gridll = sed_grid_search(dt.sed.poly.tst, sims.dat, my.branch = 'v', err_rate = 0.001, p_h_method = p_h_method,
-                                           bins.mh_contam = 1, bins.faunal_prop = 1, bins.t = 10, nsteps = 5,
+                                           bins.mh_contam = 1, bins.faunal_prop = 1, bins.t = 10, nsteps = 2,
                                            range.mh_contam = c(0,0), range.faunal_prop = c(0,0), 
                                            range.t = sims.dat$branch.bounds[branch == 'v', c(t.low, t.high)])
   
   ## do EM search, estimating time and MH contam
   x.em.all_params.n100 = sed_EM(dt.sed.poly.tst, sims.dat, my.branch = 'v', err_rate = 0.001, 
                                 max.iter = max.iter, ll.converge = 1e-10, 
-                                set.faunal_prop = 0, p_h_method = p_h_method)
+                                set.faunal_prop = set.faunal_prop, p_h_method = p_h_method)
   
   dt.sed.poly.tst.gridll.all_params = sed_grid_search(dt.sed.poly.tst, sims.dat, my.branch = 'v', err_rate = 0.001, p_h_method = p_h_method,
-                                                      bins.mh_contam = 10, bins.faunal_prop = 1, bins.t = 10, nsteps = 4,
+                                                      bins.mh_contam = 10, bins.faunal_prop = 1, bins.t = 10, nsteps = 3,
                                                       range.mh_contam = c(0,.2), range.faunal_prop = c(0,0),
                                                       range.t = sims.dat$branch.bounds[branch == 'v', c(t.low, t.high)])
   em.mismatch = dt.sed.poly.tst.gridll.all_params[is.max == T, ll] - x.em.all_params.n100$man.max.ll
@@ -860,32 +965,54 @@ eval_sed_t_and_mh <- function(dt.sed.poly.tst, p_h_method, max.iter = 100) {
               em.mismatch = em.mismatch))
 }
 
-plot_eval_sed_t_and_mh <- function(eval.ret) {
+plot_eval_sed_t_and_mh <- function(eval.ret, true_branchtime = 0.75, true_mh_contam = 0, plot.0 = F, plot.title = NULL) {
   ## constrain mh and faunal = 0, just estimate time with EM
   
-  ## plot them, they match!
-  p1 <- ggplot(eval.ret$dt.sed.poly.tst.gridll, aes(x=my.t, y=ll)) + geom_point() +
-    geom_point(aes(x=eval.ret$x.em$branchtime, y=eval.ret$x.em$man.max.ll), color='red', pch='x', size=10) +
-    xlab('branch time estimate grid vs EM (red x)') +
-    geom_vline(xintercept = eval.ret$dt.sed.poly.tst.gridll[is.max == T, my.t], color='green', lty=3) +
-    geom_vline(xintercept = .75)
-  print(p1)
+  if (plot.0) {
+    ## plot them, they match!
+    p1 <- ggplot(eval.ret$dt.sed.poly.tst.gridll, aes(x=my.t, y=ll)) + geom_point() +
+      geom_point(aes(x=eval.ret$x.em$branchtime, y=eval.ret$x.em$man.max.ll), color='red', pch='x', size=10) +
+      xlab('branch time estimate grid vs EM (red x)') +
+      geom_vline(xintercept = eval.ret$dt.sed.poly.tst.gridll[is.max == T, my.t], color='green', lty=3) +
+      geom_vline(xintercept = true_branchtime)
+    if (!is.null(plot.title)) {
+      p1 <- p1 + ggtitle(plot.title)
+    }
+    print(p1)
+  }
   
   p2 <-   ggplot(eval.ret$dt.sed.poly.tst.gridll.all_params[step.x > 0],
                  aes(x=my.t, y=mh_contam, color=ll)) +
-    geom_point(aes(x=.75, y=0), color='black', pch='x', size=10) +
     geom_point() +
     geom_point(data=eval.ret$dt.sed.poly.tst.gridll.all_params[max(ll) - ll < eval.ret$em.mismatch & step.x > 0], color='red') +
     geom_point(data=eval.ret$dt.sed.poly.tst.gridll.all_params[max(ll) - ll < eval.ret$em.mismatch/10 & step.x > 0], color='green') +
-    geom_path(data=data.table(my.t = eval.ret$x.em.all_params.n100$branchtime.trace,
+    geom_path(data=data.table(my.t = rep(eval.ret$x.em.all_params.n100$branchtime.trace,
+                                         each = length(unique(eval.ret$x.em.all_params.n100$dt.theta.trace$rg))),
                               eval.ret$x.em.all_params.n100$dt.theta.trace),
+              aes(group = rg),
               color='red') +
-    geom_point(aes(x=eval.ret$x.em.all_params.n100$branchtime, y=eval.ret$x.em.all_params.n100$dt.theta$mh_contam), color='red', pch='x', size=10) +
+    geom_point(data = data.table(x=rep(true_branchtime, length(true_mh_contam)), y=true_mh_contam), 
+               aes(x=x,y=y), color='black', pch='x', size=10) +
+    geom_point(data = data.table(x=rep(eval.ret$x.em.all_params.n100$branchtime, 
+                                       length(eval.ret$x.em.all_params.n100$dt.theta$mh_contam)), 
+                                 y=eval.ret$x.em.all_params.n100$dt.theta$mh_contam),
+               aes(x=x,y=y), color='slateblue1', pch='x', size=10) +
+    geom_point(data=eval.ret$dt.sed.poly.tst.gridll.all_params[max(ll) == ll], color='black', pch='*', size=4) +
     xlab('branch time estimate grid (green/red dots) vs EM (red x)') + ylab('mh contam estimate') +
+    coord_cartesian(ylim = c(0,.3)) +
     ggtitle(sprintf('ll of red points within %g of EM ll; red line is EM trace', eval.ret$em.mismatch))
+  
+  if (!is.null(plot.title)) {
+    p2 <- p2 + ggtitle(plot.title)
+  }
+  
+  # dt.sed.analysis.mh_all.contam1.x4.one_rg2.simple.fixed_anc_p_0.004$dt.sed.poly.tst.gridll.all_params[ll == max(ll)]
   #
   print(p2)
 }
+
+
+
   
 if (F) {
     
@@ -923,3 +1050,6 @@ if (F) {
   ##
   
 }
+
+
+

@@ -439,52 +439,9 @@ saveRDS(my.ret, sprintf('%s_estim_branch.ll.RDS', args$prefix))
 
 
 #################
-## test method by "simulating" data
+## test method by "simulating" data, simply from the frequencies
 if (F) {
   
-  
-  
-  
-  simulate_data_sed <- function(method, my.t, sims.dat, my.mh_contam = 0, my.faunal_prop = 0, err_rate = 0.001, nsites = 1002) {
-
-    dt.sed.poly.tst <- data.table(v_gt=0:2, c_gt=0:2, a_gt=0:2, d_gt=0, f_mh=rbeta(nsites, .2, 5), rg = 'hey_rg', x = 1:nsites)
-    dt.sed.poly.tst[, v_gt := sample(v_gt)]
-    dt.sed.poly.tst[, c_gt := sample(c_gt)]
-    dt.sed.poly.tst[, a_gt := sample(a_gt)]
-    
-    if (method == 'bt')  dt.sed.poly.tst[, p_h_der := my.t]
-    if (method == 'bt2') dt.sed.poly.tst[, p_h_der := my.t / (c_gt+1)]
-    if (method == 'bt3') dt.sed.poly.tst[, p_h_der := ifelse(a_gt == 0, 0.001, my.t / (c_gt+1))]
-    
-    if (method == 'simple') {
-      dt.sed.poly.tst[, p_h_der := sims.dat$simple_p_given_b_t_arcs('v', my.t,
-                                                                    list(v_gt,c_gt,a_gt,d_gt),
-                                                                    sims.dat),
-                      .(v_gt,c_gt,a_gt,d_gt)]
-    }
-    if (method == 'full') {
-      dt.sed.poly.tst[, p_h_der := sims.dat$p_gt_given_b_t_arcs('v', my.t,
-                                                                list(v_gt,c_gt,a_gt,d_gt),
-                                                                sims.dat),
-                      .(v_gt,c_gt,a_gt,d_gt)]
-    }
-    
-    
-    dt.sed.poly.tst[, sed_gt := sample(c(0,1), .N, prob = c(1-p_h_der,p_h_der), replace=T), p_h_der]
-    
-    dt.sed.poly.tst[, .(sum(sed_gt) / .N, .N), .(p_h_der)]
-    
-    mh.sites = dt.sed.poly.tst[, sample(.N, .N*my.mh_contam)]
-    dt.sed.poly.tst[mh.sites, .N, keyby=sed_gt]
-    dt.sed.poly.tst[mh.sites, sed_gt := sample(c(0,1), .N, prob=c(1-f_mh,f_mh), replace=T), f_mh]
-    dt.sed.poly.tst[mh.sites, .(sum(sed_gt)/.N, mean(f_mh))]
-    #
-    err.sites = dt.sed.poly.tst[, sample(.N, .N*err_rate)]
-    dt.sed.poly.tst[err.sites, .N, sed_gt]
-    dt.sed.poly.tst[err.sites, sed_gt := sample(c(0,1), .N, prob=c(.5,.5), replace=T)]
-    dt.sed.poly.tst[err.sites, .N, sed_gt]
-    dt.sed.poly.tst
-  }
   
   simulate_data_sed('bt', .75, sims.dat)
   simulate_data_sed('bt2', .75, sims.dat)
@@ -492,67 +449,6 @@ if (F) {
   simulate_data_sed('simple', .75, sims.dat)[v_gt == 0 & c_gt == 0 & a_gt == 0]
   simulate_data_sed('full', .75, sims.dat)[v_gt == 0 & c_gt == 0 & a_gt == 0]
   
-
-  eval_sed_t_and_mh <- function(dt.sed.poly.tst, p_h_method, max.iter = 100) {
-    ## constrain mh and faunal = 0, just estimate time with EM
-    x.em = sed_EM(dt.sed.poly.tst, sims.dat, my.branch = 'v', err_rate = 0.001, max.iter = 10, set.faunal_prop = 0, set.mh_contam = 0, p_h_method = p_h_method)
-    
-    ## the ll goes up and down a bit in the trace sometimes?  just not 100% stable?
-    # plot(tail(x.em$man.ll.trace,9))
-    # plot(tail(x.em$ll.trace,9))
-    
-    ## do "grid" search, just estimating time  
-    dt.sed.poly.tst.gridll = sed_grid_search(dt.sed.poly.tst, sims.dat, my.branch = 'v', err_rate = 0.001, p_h_method = p_h_method,
-                                             bins.mh_contam = 1, bins.faunal_prop = 1, bins.t = 10, nsteps = 5,
-                                             range.mh_contam = c(0,0), range.faunal_prop = c(0,0), 
-                                             range.t = sims.dat$branch.bounds[branch == 'v', c(t.low, t.high)])
-    
-    ## do EM search, estimating time and MH contam
-    x.em.all_params.n100 = sed_EM(dt.sed.poly.tst, sims.dat, my.branch = 'v', err_rate = 0.001, 
-                                  max.iter = max.iter, ll.converge = 1e-10, 
-                                  set.faunal_prop = 0, p_h_method = p_h_method)
-    
-    dt.sed.poly.tst.gridll.all_params = sed_grid_search(dt.sed.poly.tst, sims.dat, my.branch = 'v', err_rate = 0.001, p_h_method = p_h_method,
-                                                        bins.mh_contam = 10, bins.faunal_prop = 1, bins.t = 10, nsteps = 4,
-                                                        range.mh_contam = c(0,.2), range.faunal_prop = c(0,0),
-                                                        range.t = sims.dat$branch.bounds[branch == 'v', c(t.low, t.high)])
-    em.mismatch = dt.sed.poly.tst.gridll.all_params[is.max == T, ll] - x.em.all_params.n100$man.max.ll
-    return(list(x.em = x.em,
-                dt.sed.poly.tst.gridll = dt.sed.poly.tst.gridll,
-                x.em.all_params.n100 = x.em.all_params.n100,
-                dt.sed.poly.tst.gridll.all_params = dt.sed.poly.tst.gridll.all_params,
-                em.mismatch = em.mismatch))
-  }
-  
-  plot_eval_sed_t_and_mh <- function(eval.ret) {
-    ## constrain mh and faunal = 0, just estimate time with EM
-
-        ## plot them, they match!
-    p1 <- ggplot(eval.ret$dt.sed.poly.tst.gridll, aes(x=my.t, y=ll)) + geom_point() +
-      geom_point(aes(x=eval.ret$x.em$branchtime, y=eval.ret$x.em$man.max.ll), color='red', pch='x', size=10) +
-      xlab('branch time estimate grid vs EM (red x)') +
-      geom_vline(xintercept = eval.ret$dt.sed.poly.tst.gridll[is.max == T, my.t], color='green', lty=3) +
-      geom_vline(xintercept = .75)
-    print(p1)
-    
-    p2 <-   ggplot(eval.ret$dt.sed.poly.tst.gridll.all_params[step.x > 0],
-                   aes(x=my.t, y=mh_contam, color=ll)) +
-      geom_point(aes(x=.75, y=0), color='black', pch='x', size=10) +
-      geom_point() +
-      geom_point(data=eval.ret$dt.sed.poly.tst.gridll.all_params[max(ll) - ll < eval.ret$em.mismatch & step.x > 0], color='red') +
-      geom_point(data=eval.ret$dt.sed.poly.tst.gridll.all_params[max(ll) - ll < eval.ret$em.mismatch/10 & step.x > 0], color='green') +
-      geom_path(data=data.table(my.t = eval.ret$x.em.all_params.n100$branchtime.trace,
-                                eval.ret$x.em.all_params.n100$dt.theta.trace),
-                color='red') +
-      geom_point(data = data.table(x=rep(eval.ret$x.em.all_params.n100$branchtime, 
-                           length(eval.ret$x.em.all_params.n100$dt.theta$mh_contam)), 
-                     y=eval.ret$x.em.all_params.n100$dt.theta$mh_contam),
-                 aes(x=x,y=y), color='slateblue1', pch='x', size=10) +
-      xlab('branch time estimate grid (green/red dots) vs EM (red x)') + ylab('mh contam estimate') +
-      ggtitle(sprintf('ll of red points within %g of EM ll; red line is EM trace', eval.ret$em.mismatch))
-    #
-    print(p2)
-  }
 
   ## very very simple fake data, using p_der=bt
   dt.sed.poly.tst <- simulate_data_sed('bt', .75, sims.dat)
@@ -590,6 +486,10 @@ if (F) {
   ## do this on the 'real' simulated data?
   ## time bash scrm9.mod.v.sh 10000 .058 0.7601
   ## I think the simulations for this come from scrm1, but those bootstraps also look suspiciously similar?
+  dt.sed.analysis = rbind(dt.sed.qc,dt.sed.poly)
+  # dt.sed.analysis = rbind(dt.sed.qc,dt.sed.poly[!(v_gt == c_gt & v_gt == a_gt)])
+  dt.sed.analysis[, rg := paste0(lib, '_deam_', deam53)]
+
   eval.ret.analysis.simple <- eval_sed_t_and_mh(dt.sed.analysis, 'simple')
   plot_eval_sed_t_and_mh(eval.ret.analysis.simple)
 
