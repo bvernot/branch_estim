@@ -2,6 +2,7 @@ options(width=200)
 # install.packages('R.utils')
 # install.packages('argparse')
 library(argparse)
+library(here)
 
 # options(error=recover)
 # options(error=NULL)
@@ -31,7 +32,7 @@ parser$add_argument("-prefix", "--prefix", required=T,
 
 if (interactive()) {
   # args <- parser$parse_args(strsplit('-gts ~/Downloads/all_simple_gts.tsv.gz --sims ~/Documents/soil_dna_capture/sims.dat.RDS -libs A17273 --prefix what -nc 2', split = ' ')[[1]])
-  # args <- parser$parse_args(strsplit('-gts "~/Google Drive/branch_point_estimates/all_simple_gts.tsv.gz" --sims "~/Google Drive/branch_point_estimates/sims.dat.RDS" -libs A20281 --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
+  # args <- parser$parse_args(strsplit('-gts "~/GoogleDrive/branch_point_estimates/all_simple_gts.tsv.gz" --sims "~/GoogleDrive/branch_point_estimates/sims.dat.RDS" -libs A20281 --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/all_simple_gts.small.tsv.gz --sims ~/Downloads/sims.dat.RDS -libs A20281 --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/hey.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
@@ -51,7 +52,7 @@ if (interactive()) {
 # 
 # setDTthreads(1)
 # 
-source('~/Google Drive/branch_point_esimates/estim_branchpoints_fns.R')
+source('R/estim_branchpoints_fns.R')
 
 registerDoParallel(cores=args$ncores)
 getDoParWorkers()

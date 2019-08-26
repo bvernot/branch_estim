@@ -1,4 +1,6 @@
 *.pdf
+*~
 data/
 figures
 .Rapp.history
+.Rproj.user
