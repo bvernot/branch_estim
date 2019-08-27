@@ -87,7 +87,11 @@ if ( length(args$rg_props) != length(args$add_contam) || length(args$rg_props) !
 }
 
 
-source(here('R/estim_branchpoints_fns.R'))
+if (is.null(args$script_path)) {
+  source(here('R/estim_branchpoints_fns.R'))
+} else {
+  source(paste0(args$script_path, '/estim_branchpoints_fns.R'))
+}
 
 registerDoParallel(cores=args$ncores)
 getDoParWorkers()
