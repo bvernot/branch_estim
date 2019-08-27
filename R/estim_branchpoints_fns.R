@@ -755,6 +755,7 @@ ll_ret_to_dt_sims <- function(my.ret, args) {
              max.ll.iter = length(my.ret$ll.trace),
              next.ll = tail(my.ret$ll.trace,2)[1],
              lib = paste0(args$libs, collapse = '_'),
+             downsample = args$downsample,
              tag = args$tag)
   
   cbind(dt, dt.theta)
