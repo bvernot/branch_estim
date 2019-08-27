@@ -50,16 +50,22 @@ if (interactive()) {
   args <- parser$parse_args(strsplit('-gts ~/Downloads/all_simple_gts.small.tsv.gz --sims ~/Downloads/sims.dat.RDS -libs A20281 --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/hey.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
+  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   # args <- parser$parse_args(strsplit('--splits ~/Documents/index_cross_contam/data/ludovic/splitstats_ludovic_orlando_001.myformat3.txt -nhits 100 --prefix splitstats_ludovic_orlando_001 -nc 2 --sources 150', split = ' ')[[1]])
 } else {
   args <- parser$parse_args()
 }
 
 
+if (length(args$add_contam) == 1) args$add_contam <- rep(args$add_contam, length(args$rg_props))
+if (length(args$add_faunal) == 1) args$add_faunal <- rep(args$add_faunal, length(args$rg_props))
+
 if ( length(args$rg_props) != length(args$add_contam) || length(args$rg_props) != length(args$add_faunal) ) {
-  cat('Must provide:\n')
-  cat('Required: ', req_columns, '\n')
-  
+  cat('Must provide contamination and faunal proportions for each read group:\n')
+  cat('RG:', args$rg_props, '\n')
+  cat('contam:', args$add_contam, '\n')
+  cat('faunal:', args$add_faunal, '\n')
+  exit()
 }
 
 
@@ -71,6 +77,7 @@ getDoParWorkers()
 
 # sims.dat <- readRDS('~/Google Drive/branch_point_esimates/sims.dat.RDS')
 sims.dat <- readRDS(args$sims.dat)
+## this 0.004 doesn't matter here, because it's modified in a different function!
 sims.dat <- add_linear_p_given_b_t_arcs(sims.dat, fixed_anc_p = 0.004)
 
 
@@ -139,7 +146,8 @@ dt.sed.qc <- data.table(dt.sed.qc.full)
 rbind(dt.sed.mh, dt.sed.qc, dt.sed.poly)
 
 
-
+####################
+## simulate contamination
 
 ## four read groups
 dt.sed.analysis.mh_all.contam1.x4 = rbind(dt.sed.qc,dt.sed.poly,dt.sed.mh)
