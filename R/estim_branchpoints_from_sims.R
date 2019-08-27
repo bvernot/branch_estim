@@ -57,6 +57,8 @@ parser$add_argument("-sites", "--site-cat", required=F, default = 'all',
                     help='Site categories to use [not currently implemented]')
 parser$add_argument("-method", "--sim-method", required=F, default = 'simple',
                     help='Site categories to use [not currently implemented]')
+parser$add_argument("-script-path", "--script-path", required=F, default = NULL,
+                    help='A hack to let R find the path for scripts to source.')
 parser$add_argument("-prefix", "--prefix", required=T,
                     help="Prefix for output files.")
 
