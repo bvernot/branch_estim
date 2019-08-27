@@ -20,12 +20,26 @@ parser$add_argument("-sims", "--sims.dat", required = T,
 parser$add_argument("-gts", "--simple-gts", required=T,
                     help="all_simple_gts.tsv.gz")
 parser$add_argument("-libs", "--libs", required=F,
-                    help="One (or more, in the future) librarie to group together.")
+                    help="One or more libraries to group together. The EM still treats them as separate read groups.  To treat these as a single read group, use --merge-libs.")
+parser$add_argument("-merge-libs", "--merge-libs", action="store_true", default=F,
+                    help="Merge all requested libraries into a single read group (or entire file, if --libs not given).")
 parser$add_argument("-tag", "--tag", required=F, default='none',
                     help="One (or more, in the future) tags for this analysis.")
 parser$add_argument("-niter", "--num-iters", type='integer', default=100,
                     help="Number of EM iterations")
+parser$add_argument("-n-qc1", "--n-qc1", type='integer', default=1000,
+                    help="Artificially add N QC sites that are DERIVED in all hominins. These are used for calculating faunal proportions, and have to be artificially added to simulated data.")
+parser$add_argument("-n-qc0", "--n-qc0", type='integer', default=1000,
+                    help="Artificially add N QC sites that are ANCESTRAL in all hominins. These are not present/useful in real data, so this should mostly be used for debugging.")
+parser$add_argument("-add-contam", "--add-contam", type='double', default=0, nargs='+',
+                    help="Artificially add contamination in these proportions")
+parser$add_argument("-add-faunal", "--add-faunal", type='double', default=0, nargs='+',
+                    help='Artificially add faunal "contamination" in these proportions')
+parser$add_argument("-rg-props", "--rg-props", type='double', default=1, nargs='+',
+                    help="Randomly split the simulations into read groups with these proportions")
 parser$add_argument("-sites", "--site-cat", required=F, default = 'all',
+                    help='Site categories to use [not currently implemented]')
+parser$add_argument("-method", "--sim-method", required=F, default = 'simple',
                     help='Site categories to use [not currently implemented]')
 parser$add_argument("-prefix", "--prefix", required=T,
                     help="Prefix for output files.")
@@ -41,18 +55,15 @@ if (interactive()) {
   args <- parser$parse_args()
 }
 
-# library(ggplot2)
-# library(data.table)
-# library(dplyr)
-# install.packages('cobs')
-# library(cobs)
-# library(foreach)
-# install.packages('doParallel')
-# library(doParallel)
-# 
-# setDTthreads(1)
-# 
-source('R/estim_branchpoints_fns.R')
+
+if ( length(args$rg_props) != length(args$add_contam) || length(args$rg_props) != length(args$add_faunal) ) {
+  cat('Must provide:\n')
+  cat('Required: ', req_columns, '\n')
+  
+}
+
+
+source(here('R/estim_branchpoints_fns.R'))
 
 registerDoParallel(cores=args$ncores)
 getDoParWorkers()
@@ -68,121 +79,66 @@ sims.dat <- add_linear_p_given_b_t_arcs(sims.dat, fixed_anc_p = 0.004)
 # dt.sed.og <- fread('~/Google Drive/branch_point_esimates/all_simple_gts.tsv.gz')
 # dt.sed.og <- fread('~/Downloads/all_simple_gts.tsv.gz')
 dt.sed.og <- fread(args$simple_gts)
-dt.sed <- data.table(dt.sed.og)
 
+####
+## confirm that all of the correct columns are present
+
+req_columns <- c('sed_gt', 'v_gt', 'c_gt', 'a_gt', 'd_gt', 'f_mh', 'lib')
+if (sum(!req_columns %in% colnames(dt.sed.og)) > 0) {
+  cat('Not all required columns are present:\n')
+  cat('Required: ', req_columns, '\n')
+  cat('Missing: ', req_columns[!req_columns %in% colnames(dt.sed.og)], '\n')
+}
+
+if (!is.null(args$libs)) {
+  dt.sed <- dt.sed.og[lib %in% args$libs]
+} else {
+  ## not really necessary, takes up a lot more space...
+  dt.sed <- data.table(dt.sed.og)
+}
+
+if (args$merge_libs) {
+  dt.sed[, lib := 'merged_libs']
+}
 
 # ## set up simulated data, because I didn't previously fill this in
 # dt.sed[, lib := 'sim009']
 # setnames(dt.sed, c('sed', 'mh_f'), c('sed_gt', 'f_mh'))
 
 dt.sed.poly.full <- dt.sed[!(v_gt == c_gt & v_gt == a_gt & v_gt == d_gt)]
-dt.sed.poly.full[, deam53 := rep(c(T,T,F,F,F), length.out = .N)]
+# dt.sed.poly.full[, deam53 := rep(c(T,T,F,F,F), length.out = .N)]
 # dt.sed.poly.full[, f_mh := f_mh / 99]
-dt.sed.poly.full[, pos := NULL]
+# dt.sed.poly.full[, pos := NULL]
 
 dt.sed.mh.full <- dt.sed[v_gt == c_gt & v_gt == a_gt & v_gt == d_gt & v_gt == 0 & f_mh > 0]
-dt.sed.mh.full[, deam53 := rep(c(T,T,F,F,F), length.out = .N)]
+# dt.sed.mh.full[, deam53 := rep(c(T,T,F,F,F), length.out = .N)]
 # dt.sed.mh.full[, f_mh := f_mh / 99]
-dt.sed.mh.full[, pos := NULL]
+# dt.sed.mh.full[, pos := NULL]
 
 dt.sed.qc.full <- foreach(my.lib = dt.sed.poly.full[, unique(lib)], .combine = rbind) %do% {
-  dt.sed.qc.full <- dt.sed.poly.full[lib == my.lib][1:1000]
-  dt.sed.qc.full[, f_mh := 0]
-  dt.sed.qc.full[, mh := 0]
-  dt.sed.qc.full[, v_gt := 0]
-  dt.sed.qc.full[, c_gt := 0]
-  dt.sed.qc.full[, a_gt := 0]
-  dt.sed.qc.full[, d_gt := 0]
-  dt.sed.qc.full[, sed_gt := 0]
+  ## just duplicate the first row of dt.sed.poly.full the correct number of times
+  dt.sed.qc.full <- dt.sed.poly.full[lib == my.lib][rep(1, args$n_qc0 + args$n_qc1)]
+  
+  qc_fill_freq_or_hap <- c(rep(0,args$n_qc0), rep(1,args$n_qc1))
+  qc_fill_gt <- c(rep(0,args$n_qc0), rep(2,args$n_qc1))
+  
+  dt.sed.qc.full[, f_mh := qc_fill_freq_or_hap]
+  dt.sed.qc.full[, mh := qc_fill_freq_or_hap]
+  dt.sed.qc.full[, v_gt := qc_fill_gt]
+  dt.sed.qc.full[, c_gt := qc_fill_gt]
+  dt.sed.qc.full[, a_gt := qc_fill_gt]
+  dt.sed.qc.full[, d_gt := qc_fill_gt]
+  dt.sed.qc.full[, sed_gt := qc_fill_freq_or_hap]
   dt.sed.qc.full
 }
 
-my.lib = dt.sed[1, lib]
-dt.sed.poly <- dt.sed.poly.full[lib == my.lib]
-dt.sed.mh <- dt.sed.mh.full[lib == my.lib]
-dt.sed.qc <- dt.sed.qc.full[lib == my.lib]
-# rbind(dt.sed.mh, dt.sed.qc)
+## not really necessary, takes up a lot more space...
+dt.sed.poly <- data.table(dt.sed.poly.full)
+dt.sed.mh <- data.table(dt.sed.mh.full)
+dt.sed.qc <- data.table(dt.sed.qc.full)
+rbind(dt.sed.mh, dt.sed.qc, dt.sed.poly)
 
 
-## do this on the 'real' simulated data?
-## time bash scrm9.mod.v.sh 10000 .058 0.7601
-## I think the simulations for this come from scrm1, but those bootstraps also look suspiciously similar?
-dt.sed.analysis = rbind(dt.sed.qc,dt.sed.poly)
-# dt.sed.analysis = rbind(dt.sed.qc,dt.sed.poly[!(v_gt == c_gt & v_gt == a_gt)])
-dt.sed.analysis[, rg := paste0(lib, '_deam_', deam53)]
-eval.ret.analysis.simple <- eval_sed_t_and_mh(dt.sed.analysis, 'simple')
-plot_eval_sed_t_and_mh(eval.ret.analysis.simple, true_branchtime = 0.7601)
-# ggsave('~/Google Drive/branch_point_esimates/sims009__no_mh_contam_no_mh_sites.pdf', width=7, height=5)
-
-
-
-dt.sed.analysis.mh_n1k = rbind(dt.sed.qc,dt.sed.poly,dt.sed.mh[sample(.N, 1000)])
-# dt.sed.analysis = rbind(dt.sed.qc,dt.sed.poly[!(v_gt == c_gt & v_gt == a_gt)])
-dt.sed.analysis.mh_n1k[, rg := paste0(lib, '_deam_', deam53)]
-dt.sed.analysis.mh_n1k.simple <- eval_sed_t_and_mh(dt.sed.analysis.mh_n1k, 'simple')
-plot_eval_sed_t_and_mh(dt.sed.analysis.mh_n1k.simple, true_branchtime = 0.7601)
-# ggsave('~/Google Drive/branch_point_esimates/sims009__no_mh_contam_with_mh_sites.pdf', width=7, height=5)
-
-
-
-dt.sed.analysis.mh_n5k = rbind(dt.sed.qc,dt.sed.poly,dt.sed.mh[sample(.N, 5000)])
-# dt.sed.analysis = rbind(dt.sed.qc,dt.sed.poly[!(v_gt == c_gt & v_gt == a_gt)])
-dt.sed.analysis.mh_n5k[, rg := paste0(lib, '_deam_', deam53)]
-dt.sed.analysis.mh_n5k.simple <- eval_sed_t_and_mh(dt.sed.analysis.mh_n5k, 'simple')
-plot_eval_sed_t_and_mh(dt.sed.analysis.mh_n5k.simple, true_branchtime = 0.7601)
-# ggsave('~/Google Drive/branch_point_esimates/sims009__no_mh_contam_with_mh_sites.pdf', width=7, height=5)
-
-
-
-
-dt.sed.analysis.mh_n5k.contam1 = rbind(dt.sed.qc,dt.sed.poly,dt.sed.mh[sample(.N, 5000)])
-# dt.sed.analysis = rbind(dt.sed.qc,dt.sed.poly[!(v_gt == c_gt & v_gt == a_gt)])
-dt.sed.analysis.mh_n5k.contam1[, rg := paste0(lib, '_deam_', deam53)]
-dt.sed.mh[, .N, .(mh, sed_gt)]
-dt.sed.analysis.mh_n5k.contam1[deam53 == F & sample(c(T,F), .N, replace = T, prob = c(.1,.9)),
-                               .N, .(mh, sed_gt)]
-dt.sed.analysis.mh_n5k.contam1[deam53 == F & sample(c(T,F), .N, replace = T, prob = c(.1,.9)),
-                               sed_gt := mh]
-
-# sims.dat <- add_linear_p_given_b_t_arcs(sims.dat, fixed_anc_p = 0.003)
-dt.sed.analysis.mh_n5k.contam1.simple <- eval_sed_t_and_mh(dt.sed.analysis.mh_n5k.contam1, 'simple')
-plot_eval_sed_t_and_mh(dt.sed.analysis.mh_n5k.contam1.simple, true_branchtime = 0.7601)
-# ggsave('~/Google Drive/branch_point_esimates/sims009__with_mh_contam_10pct.fixed_anc_p_0.003.pdf', width=7, height=5)
-
-
-sims.dat <- add_linear_p_given_b_t_arcs(sims.dat, fixed_anc_p = 0.001)
-dt.sed.analysis.mh_n5k.contam1.simple.fixed_anc_p_0.001 <- eval_sed_t_and_mh(dt.sed.analysis.mh_n5k.contam1, 'simple', max.iter = 40)
-plot_eval_sed_t_and_mh(dt.sed.analysis.mh_n5k.contam1.simple.fixed_anc_p_0.001, true_branchtime = 0.7601)
-ggsave('~/Google Drive/branch_point_esimates/sims009__with_mh_contam_10pct.fixed_anc_p_0.001.pdf', width=7, height=5)
-
-sims.dat <- add_linear_p_given_b_t_arcs(sims.dat, fixed_anc_p = 0.004) 
-dt.sed.analysis.mh_n5k.contam1.simple.fixed_anc_p_0.004 <- eval_sed_t_and_mh(dt.sed.analysis.mh_n5k.contam1, 'simple', max.iter = 40)
-plot_eval_sed_t_and_mh(dt.sed.analysis.mh_n5k.contam1.simple.fixed_anc_p_0.004, true_branchtime = 0.7601)
-ggsave('~/Google Drive/branch_point_esimates/sims009__with_mh_contam_10pct.fixed_anc_p_0.004.pdf', width=7, height=5)
-
-# sims.dat <- add_linear_p_given_b_t_arcs(sims.dat, fixed_anc_p = 0.004)
-dt.sed.analysis.mh_n5k.contam1.simple.fixed_anc_p_0.004.n100 <- eval_sed_t_and_mh(dt.sed.analysis.mh_n5k.contam1, 'simple', max.iter = 100)
-plot_eval_sed_t_and_mh(dt.sed.analysis.mh_n5k.contam1.simple.fixed_anc_p_0.004.n100, true_branchtime = 0.7601)
-ggsave('~/Google Drive/branch_point_esimates/sims009__with_mh_contam_10pct.fixed_anc_p_0.004.n100.pdf', width=7, height=5)
-
-dt.sed.analysis.mh_all.contam1 = rbind(dt.sed.qc,dt.sed.poly,dt.sed.mh)
-# dt.sed.analysis = rbind(dt.sed.qc,dt.sed.poly[!(v_gt == c_gt & v_gt == a_gt)])
-dt.sed.analysis.mh_all.contam1[, rg := paste0(lib, '_deam_', deam53)]
-dt.sed.analysis.mh_all.contam1[deam53 == F & sample(c(T,F), .N, replace = T, prob = c(.1,.9)),
-                               sed_gt := mh]
-dt.sed.analysis.mh_all.contam1.simple.fixed_anc_p_0.004 <- eval_sed_t_and_mh(dt.sed.analysis.mh_all.contam1, 'simple', max.iter = 40)
-plot_eval_sed_t_and_mh(dt.sed.analysis.mh_all.contam1.simple.fixed_anc_p_0.004, true_branchtime = 0.7601)
-ggsave('~/Google Drive/branch_point_esimates/sims009__with_mh_contam_10pct.fixed_anc_p_0.004.mh_all.pdf', width=7, height=5)
-
-## 2x the mh sites
-dt.sed.analysis.mh_all2.contam1 = rbind(dt.sed.qc,dt.sed.poly,dt.sed.mh,dt.sed.mh)
-# dt.sed.analysis = rbind(dt.sed.qc,dt.sed.poly[!(v_gt == c_gt & v_gt == a_gt)])
-dt.sed.analysis.mh_all2.contam1[, rg := paste0(lib, '_deam_', deam53)]
-dt.sed.analysis.mh_all2.contam1[deam53 == F & sample(c(T,F), .N, replace = T, prob = c(.1,.9)),
-                               sed_gt := mh] 
-dt.sed.analysis.mh_all2.contam1.simple.fixed_anc_p_0.004 <- eval_sed_t_and_mh(dt.sed.analysis.mh_all2.contam1, 'simple', max.iter = 40)
-plot_eval_sed_t_and_mh(dt.sed.analysis.mh_all2.contam1.simple.fixed_anc_p_0.004, true_branchtime = 0.7601)
-ggsave('~/Google Drive/branch_point_esimates/sims009__with_mh_contam_10pct.fixed_anc_p_0.004.mh_all2.pdf', width=7, height=5)
 
 
 ## four read groups
