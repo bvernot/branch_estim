@@ -745,14 +745,14 @@ ll_ret_to_dt_sims <- function(my.ret, args) {
   dt.theta[, true_mh_contam := args$add_contam]
   dt.theta[, true_faunal_prop := args$add_faunal]
   
-  dt = data.table(max.ll = my.ret$max.ll,
-             branch = my.ret$branch,
+  dt = data.table(branch = my.ret$branch,
              true_branch = args$true_branch,
              branchtime = my.ret$branchtime,
              true_branchtime = args$true_branchtime,
              branchtime.rel = (my.ret$branchtime - sims.dat$bounds.for.branch(my.ret$branch, 'low', sims.dat)) / 
                (sims.dat$bounds.for.branch(my.ret$branch, 'high', sims.dat) - sims.dat$bounds.for.branch(my.ret$branch, 'low', sims.dat)),
              max.ll.iter = length(my.ret$ll.trace),
+             max.ll = my.ret$max.ll,
              next.ll = tail(my.ret$ll.trace,2)[1],
              lib = paste0(args$libs, collapse = '_'),
              downsample = args$downsample,
