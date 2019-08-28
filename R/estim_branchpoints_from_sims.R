@@ -45,7 +45,7 @@ parser$add_argument("-n-qc1", "--n-qc1", type='integer', default=1000,
                     help="Artificially add N QC sites that are DERIVED in all hominins. These are used for calculating faunal proportions, and have to be artificially added to simulated data.")
 parser$add_argument("-n-qc0", "--n-qc0", type='integer', default=0,
                     help="Artificially add N QC sites that are ANCESTRAL in all hominins. These are not present/useful in real data, so this should mostly be used for debugging.")
-parser$add_argument("-downsample", "--downsample", type='integer', default=NULL,
+parser$add_argument("-downsample", "--downsample", type='integer', default=0,
                     help="Downsample data to N reads. This samples the entire dataset, so e.g. if originally each read group was 25% of the data, these proportions may change.")
 parser$add_argument("-add-contam", "--add-contam", type='double', default=0, nargs='+',
                     help="Artificially add contamination in these proportions")
@@ -178,11 +178,11 @@ dt.sed.qc <- data.table(dt.sed.qc.full)
 
 nreads <- dt.sed.poly[, .N] + dt.sed.mh[, .N]
 
-if (!is.null(args$downsample)) dt.sed.poly <- dt.sed.poly[sample(.N, .N / nreads * args$downsample)]
+if (args$downsample > 0) dt.sed.poly <- dt.sed.poly[sample(.N, .N / nreads * args$downsample)]
 dt.sed.mh <- data.table(dt.sed.mh.full)
-if (!is.null(args$downsample)) dt.sed.mh <- dt.sed.mh[sample(.N, .N / nreads * args$downsample)]
+if (args$downsample > 0) dt.sed.mh <- dt.sed.mh[sample(.N, .N / nreads * args$downsample)]
 dt.sed.analysis <- rbind(dt.sed.mh, dt.sed.qc, dt.sed.poly)
-
+args$nreads <- dt.sed.poly[, .N] + dt.sed.mh[, .N] + dt.sed.qc[, .N]
 
 ####################
 ## create read groups
@@ -229,6 +229,8 @@ if (!is.null(args$branch)) {
 }
 
 fwrite(ll_ret_to_dt_sims(x.em, args), args$output_table, sep='\t')
+x.em$args <- args
+saveRDS(x.em, paste0(args$output_table,'.RDS'))
 
 # 
 # 
