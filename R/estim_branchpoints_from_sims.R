@@ -1,4 +1,11 @@
-options(width=200)
+dump_and_quit <- function() {
+    ## Save debugging info to file last.dump.rda
+    traceback()
+    ## Quit R with error status
+    q(status = 1)
+}
+options(error = dump_and_quit, width=200)
+
 # install.packages('R.utils')
 # install.packages('argparse')
 library(argparse)
@@ -33,6 +40,8 @@ parser$add_argument("-branch", "--branch", required=F, default=NULL,
                     help="Only run the EM on a single branch. e.g. --branch v")
 parser$add_argument("-sample-mh", "--sample-mh-from-freqs", default=F, action='store_true',
                     help="Sample the mh 'contamination' from f_mh frequencies rather than a separate column mh")
+parser$add_argument("-f-mh", "--f-mh", default='f_mh',
+                    help="Use this column ID for modern human allele frquencies.  Default is f_mh")
 parser$add_argument("-libs", "--libs", required=F,
                     help="One or more libraries to group together. The EM still treats them as separate read groups.  To treat these as a single read group, use --merge-libs.")
 parser$add_argument("-merge-libs", "--merge-libs", action="store_true", default=F,
@@ -83,7 +92,7 @@ if ( length(args$rg_props) != length(args$add_contam) || length(args$rg_props) !
   cat('RG:', args$rg_props, '\n')
   cat('contam:', args$add_contam, '\n')
   cat('faunal:', args$add_faunal, '\n')
-  exit()
+  q(save='no', status=1)
 }
 
 
@@ -106,37 +115,58 @@ sims.dat <- add_linear_p_given_b_t_arcs(sims.dat, fixed_anc_p = 0.004)
 
 
 # dt.sed.og <- fread('~/Google Drive/branch_point_esimates/all_simple_gts.tsv.gz')
-# dt.sed.og <- fread('~/Downloads/all_simple_gts.tsv.gz')
+                                        # dt.sed.og <- fread('~/Downloads/all_simple_gts.tsv.gz')
+cat('Reading genotypes..', args$simple_gts, '\n')
 dt.sed.og <- fread(args$simple_gts)
+cat('  Read:', dt.sed.og[, .N], 'sites\n')
+cat('  Libraries in file:', dt.sed.og[, unique(lib)], '\n')
+
 
 ####
 ## confirm that all of the correct columns are present
+
+setnames(dt.sed.og, args$f_mh, 'f_mh')
 
 req_columns <- c('sed_gt', 'v_gt', 'c_gt', 'a_gt', 'd_gt', 'f_mh', 'lib')
 if (sum(!req_columns %in% colnames(dt.sed.og)) > 0) {
   cat('Not all required columns are present:\n')
   cat('Required: ', req_columns, '\n')
   cat('Missing: ', req_columns[!req_columns %in% colnames(dt.sed.og)], '\n')
+  stop()
 }
 
 ## if there's no mh column, then sample from f_mh
+## anyway, we require complete.cases for f_mh
+dt.sed.og <- dt.sed.og[!is.na(dt.sed.og$f_mh)]
 if (!'mh' %in% colnames(dt.sed.og) || args$sample_mh_from_freqs) 
-  dt.sed.og$mh <- sapply(dt.sed.og[, f_mh], function(f_mh) sample(0:1, 1, prob = c(1-f_mh,f_mh)))
-  
+    dt.sed.og$mh <- sapply(dt.sed.og[, f_mh], function(f_mh) sample(0:1, 1, prob = c(1-f_mh,f_mh)))
+# ggplot(dt.sed.og[, .(p = sum(mh)/.N, .N), f_mh], aes(x=f_mh, y=p, size=N)) + geom_point()
+
 ## ISSUE - could move this to sed_EM? but probably best to remove unexpected columns now
 dt.sed.og <- dt.sed.og[, .(sed_gt, v_gt, c_gt, a_gt, d_gt, f_mh, mh, lib)]
+cat('Filtering rows with NA in required columns:', sum(!complete.cases(dt.sed.og)), 'sites\n')
+dt.sed.og <- dt.sed.og[complete.cases(dt.sed.og)]
+cat('  Remaining:', dt.sed.og[, .N], 'sites\n')
 
 
 
 if (!is.null(args$libs)) {
-  dt.sed <- dt.sed.og[lib %in% args$libs]
+    if (sum(!args$libs %in% dt.sed.og[, unique(lib)]) > 0) {
+        cat('Requested library is not in dataset:', args$libs[!args$libs %in% dt.sed.og[, unique(lib)]], '\n')
+        q(save='no', status=1)
+    }
+    cat('Filtering requested libraries: ', args$libs, '\n')
+    dt.sed <- dt.sed.og[lib %in% args$libs]
+    cat('Keeping: ', dt.sed[, .N], 'sites\n')
 } else {
   ## not really necessary, takes up a lot more space...
   dt.sed <- data.table(dt.sed.og)
+  cat('Using all libraries\n')
 }
 
 if (args$merge_libs) {
   dt.sed[, lib := 'merged_libs']
+  cat('Merging libraries\n')
 }
 
 # ## set up simulated data, because I didn't previously fill this in
@@ -144,15 +174,18 @@ if (args$merge_libs) {
 # setnames(dt.sed, c('sed', 'mh_f'), c('sed_gt', 'f_mh'))
 
 dt.sed.poly.full <- dt.sed[!(v_gt == c_gt & v_gt == a_gt & v_gt == d_gt)]
+cat('Polymorphic in archaic: ', dt.sed.poly.full[, .N], 'sites\n')
 # dt.sed.poly.full[, deam53 := rep(c(T,T,F,F,F), length.out = .N)]
 # dt.sed.poly.full[, f_mh := f_mh / 99]
 # dt.sed.poly.full[, pos := NULL]
 
 dt.sed.mh.full <- dt.sed[v_gt == c_gt & v_gt == a_gt & v_gt == d_gt & v_gt == 0 & f_mh > 0]
+cat('Ancestral in archaics, seg in MH: ', dt.sed.mh.full[, .N], 'sites\n')
 # dt.sed.mh.full[, deam53 := rep(c(T,T,F,F,F), length.out = .N)]
 # dt.sed.mh.full[, f_mh := f_mh / 99]
 # dt.sed.mh.full[, pos := NULL]
 
+## simulate QC sites - but should also save QC sites in real data [code to do this is in an older scratch file]
 dt.sed.qc.full <- foreach(my.lib = dt.sed.poly.full[, unique(lib)], .combine = rbind) %do% {
   ## just duplicate the first row of dt.sed.poly.full the correct number of times
   dt.sed.qc.full <- dt.sed.poly.full[lib == my.lib][rep(1, args$n_qc0 + args$n_qc1)]
@@ -183,6 +216,8 @@ dt.sed.mh <- data.table(dt.sed.mh.full)
 if (args$downsample > 0) dt.sed.mh <- dt.sed.mh[sample(.N, .N / nreads * args$downsample)]
 dt.sed.analysis <- rbind(dt.sed.mh, dt.sed.qc, dt.sed.poly)
 args$nreads <- dt.sed.poly[, .N] + dt.sed.mh[, .N] + dt.sed.qc[, .N]
+if (args$downsample > 0) cat('Downsample to requested number of sites: ', args$nreads, 'sites\n')
+
 
 ####################
 ## create read groups
