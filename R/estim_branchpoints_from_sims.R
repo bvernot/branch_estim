@@ -62,8 +62,8 @@ parser$add_argument("-add-faunal", "--add-faunal", type='double', default=0, nar
                     help='Artificially add faunal "contamination" in these proportions')
 parser$add_argument("-rg-props", "--rg-props", type='double', default=1, nargs='+',
                     help="Randomly split the simulations into read groups with these proportions")
-parser$add_argument("-sites", "--site-cat", required=F, default = 'all',
-                    help='Site categories to use [not currently implemented]')
+parser$add_argument("-sites", "--sites", required=F, default = 'all', nargs='+', dest = 'site_cat',
+                    help='Site categories to use. Can be a list. Options: all, poly_archaic, poly_neand, mh_seg_arc_fixed0')
 parser$add_argument("-method", "--sim-method", required=F, default = 'simple',
                     help='Site categories to use [not currently implemented]')
 parser$add_argument("-script-path", "--script-path", required=F, default = NULL,
@@ -78,6 +78,7 @@ if (interactive()) {
   args <- parser$parse_args(strsplit('-gts ~/Downloads/hey.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs sims009.v.0.7601.1 --rg-props .2 .8 --add-contam 0 .1 --downsample 10000 --n-qc1 1000 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
+  # args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/ --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs sims009.v.0.7601.1 --rg-props .2 .8 --add-contam 0 .1 --downsample 10000 --n-qc1 1000 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
   # args <- parser$parse_args(strsplit('--splits ~/Documents/index_cross_contam/data/ludovic/splitstats_ludovic_orlando_001.myformat3.txt -nhits 100 --prefix splitstats_ludovic_orlando_001 -nc 2 --sources 150', split = ' ')[[1]])
 } else {
   args <- parser$parse_args()
@@ -102,8 +103,8 @@ if (is.null(args$script_path)) {
   source(paste0(args$script_path, '/estim_branchpoints_fns.R'))
 }
 
-registerDoParallel(cores=args$ncores)
-getDoParWorkers()
+# registerDoParallel(cores=args$ncores)
+# getDoParWorkers()
 
 
 # sims.dat <- readRDS('~/Google Drive/branch_point_esimates/sims.dat.RDS')
@@ -173,14 +174,26 @@ if (args$merge_libs) {
 # dt.sed[, lib := 'sim009']
 # setnames(dt.sed, c('sed', 'mh_f'), c('sed_gt', 'f_mh'))
 
-dt.sed.poly.full <- dt.sed[!(v_gt == c_gt & v_gt == a_gt & v_gt == d_gt)]
-cat('Polymorphic in archaic: ', dt.sed.poly.full[, .N], 'sites\n')
+if ('all' %in% args$site_cat || 'poly_arc' %in% args$site_cat) {
+  dt.sed.poly.full <- dt.sed[!(v_gt == c_gt & v_gt == a_gt & v_gt == d_gt)]
+  cat('Polymorphic in archaic: ', dt.sed.poly.full[, .N], 'sites\n')
+} else if ('poly_neand' %in% args$site_cat) {
+  dt.sed.poly.full <- dt.sed[!(v_gt == c_gt & v_gt == a_gt)]
+  cat('Polymorphic in neands: ', dt.sed.poly.full[, .N], 'sites\n')
+} else {
+  dt.sed.poly.full <- data.table()
+}
+
 # dt.sed.poly.full[, deam53 := rep(c(T,T,F,F,F), length.out = .N)]
 # dt.sed.poly.full[, f_mh := f_mh / 99]
 # dt.sed.poly.full[, pos := NULL]
 
-dt.sed.mh.full <- dt.sed[v_gt == c_gt & v_gt == a_gt & v_gt == d_gt & v_gt == 0 & f_mh > 0]
-cat('Ancestral in archaics, seg in MH: ', dt.sed.mh.full[, .N], 'sites\n')
+if ('all' %in% args$site_cat || 'mh_seg_arc_fixed0' %in% args$site_cat) {
+  dt.sed.mh.full <- dt.sed[v_gt == c_gt & v_gt == a_gt & v_gt == d_gt & v_gt == 0 & f_mh > 0]
+  cat('Ancestral in archaics, seg in MH: ', dt.sed.mh.full[, .N], 'sites\n')
+} else {
+  dt.sed.mh.full <- data.table()
+}
 # dt.sed.mh.full[, deam53 := rep(c(T,T,F,F,F), length.out = .N)]
 # dt.sed.mh.full[, f_mh := f_mh / 99]
 # dt.sed.mh.full[, pos := NULL]
