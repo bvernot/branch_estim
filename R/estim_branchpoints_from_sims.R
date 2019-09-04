@@ -32,14 +32,14 @@ parser$add_argument("-sims", "--sims.dat", required = T,
 parser$add_argument("-gts", "--simple-gts", required=T,
                     help="all_simple_gts.tsv.gz")
 
-parser$add_argument("-libs", "--libs", required=F,
+parser$add_argument("-libs", "--libs", required=F, nargs = '+',
                     help="One or more libraries to group together. The EM still treats them as separate read groups.  To treat these as a single read group, use --merge-libs.")
 parser$add_argument("-merge-libs", "--merge-libs", action="store_true", default=F,
                     help="Merge all requested libraries into a single read group (or entire file, if --libs not given).")
 
 parser$add_argument("-table", "--output-table", required=F,
                     help="Save the results to <output-table> in tsv form.  Also saves an RDS of the em results.")
-parser$add_argument("-debug-gts", "--debug-gts-at-time", required=F, type='double',
+parser$add_argument("-debug-gts", "--debug-gts-at-time", required=F, type='double', nargs = '+',
                     help="Given a branch and a branch time, report expected and observed p(der) for each genotype category. Requires --branch also.")
 
 parser$add_argument("-branch", "--branch", required=F, default=NULL,
@@ -98,7 +98,7 @@ if (interactive()) {
   args <- parser$parse_args(strsplit('-gts ~/Downloads/hey.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --debug-gts-at-time 0.7601 --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs sims009.v.0.7601.1 --rg-props .2 .8 --add-contam 0 .1 --downsample 10000 --n-qc1 1000 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
-  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey --debug-gts-at-time 0.8501 --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
+  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey --debug-gts-at-time 0.5601 0.6501 0.7501 0.8501 --sim-method simple --libs Mez1_R5661 Mez2_A9180 -f-mh f_mh.yri --n-qc1 0 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
   # args <- parser$parse_args(strsplit('--splits ~/Documents/index_cross_contam/data/ludovic/splitstats_ludovic_orlando_001.myformat3.txt -nhits 100 --prefix splitstats_ludovic_orlando_001 -nc 2 --sources 150', split = ' ')[[1]])
 } else {
   args <- parser$parse_args()
@@ -163,25 +163,28 @@ if (!'mh' %in% colnames(dt.sed.og) || args$sample_mh_from_freqs)
     dt.sed.og$mh <- sapply(dt.sed.og[, f_mh], function(f_mh) sample(0:1, 1, prob = c(1-f_mh,f_mh)))
 # ggplot(dt.sed.og[, .(p = sum(mh)/.N, .N), f_mh], aes(x=f_mh, y=p, size=N)) + geom_point()
 
-## ISSUE - could move this to sed_EM? but probably best to remove unexpected columns now
-dt.sed.og <- dt.sed.og[, .(sed_gt, v_gt, c_gt, a_gt, d_gt, f_mh, mh, lib)]
-cat('Filtering rows with NA in required columns:', sum(!complete.cases(dt.sed.og)), 'sites\n')
-dt.sed.og <- dt.sed.og[complete.cases(dt.sed.og)]
-cat('  Remaining:', dt.sed.og[, .N], 'sites\n')
+dt.sed.og[,.N,freqs.FLAG]
 
+## ISSUE - could move this to sed_EM? but probably best to remove unexpected columns now
+dt.sed <- dt.sed.og[, .(sed_gt, v_gt, c_gt, a_gt, d_gt, f_mh, mh, lib, freqs.FLAG)]
+cat('Filtering rows with NA in required columns:', sum(!complete.cases(dt.sed)), 'sites\n')
+dt.sed <- dt.sed[complete.cases(dt.sed)]
+cat('  Remaining:', dt.sed[, .N], 'sites\n')
+
+dt.sed <- dt.sed[!freqs.FLAG %like% 'transi']
 
 
 if (!is.null(args$libs)) {
-    if (sum(!args$libs %in% dt.sed.og[, unique(lib)]) > 0) {
-        cat('Requested library is not in dataset:', args$libs[!args$libs %in% dt.sed.og[, unique(lib)]], '\n')
+    if (sum(!args$libs %in% dt.sed[, unique(lib)]) > 0) {
+        cat('Requested library is not in dataset:', args$libs[!args$libs %in% dt.sed[, unique(lib)]], '\n')
         q(save='no', status=1)
     }
     cat('Filtering requested libraries: ', args$libs, '\n')
-    dt.sed <- dt.sed.og[lib %in% args$libs]
+    dt.sed <- dt.sed[lib %in% args$libs]
     cat('Keeping: ', dt.sed[, .N], 'sites\n')
 } else {
   ## not really necessary, takes up a lot more space...
-  dt.sed <- data.table(dt.sed.og)
+  dt.sed <- data.table(dt.sed)
   cat('Using all libraries\n')
 }
 
@@ -193,6 +196,11 @@ if (args$merge_libs) {
 # ## set up simulated data, because I didn't previously fill this in
 # dt.sed[, lib := 'sim009']
 # setnames(dt.sed, c('sed', 'mh_f'), c('sed_gt', 'f_mh'))
+
+
+dt.sed[, gt.cat := paste0(v_gt, c_gt, a_gt, d_gt)]
+
+
 
 if ('all' %in% args$site_cat || 'poly_arc' %in% args$site_cat) {
   dt.sed.poly.full <- dt.sed[!(v_gt == c_gt & v_gt == a_gt & v_gt == d_gt)]
@@ -267,6 +275,10 @@ dt.sed.analysis[, rg := paste0(lib, '_rg_', sample(1:length(args$rg_props), .N, 
 ## simulate contamination
 
 all_rg = dt.sed.analysis[, unique(rg)]
+
+if (length(args$add_contam) == 1) args$add_contam <- rep(args$add_contam, length(all_rg))
+if (length(args$add_faunal) == 1) args$add_faunal <- rep(args$add_faunal, length(all_rg))
+
 for (my_rg.idx in 1:length(all_rg)) {
   my_rg = all_rg[my_rg.idx]
   my_rg.contam = args$add_contam[my_rg.idx]
@@ -285,28 +297,102 @@ for (my_rg.idx in 1:length(all_rg)) {
 setkey(dt.sed.analysis, v_gt, c_gt, a_gt, d_gt)
 
 
+
+
 ################
 ## debug genotypes, if requested
 
 if (!is.null(args$debug_gts_at_time)) {
   
-  all.gt <- sims.dat$dt.simple_p_given_b_t_arcs[branch == args$branch]
+  # args$debug_gts_at_time <- c(.56, .65, .75, .85)
   
-  debug.gts <- foreach (gt.idx = 1:nrow(all.gt), .combine = rbind) %do% {
-    this.gt <- all.gt[gt.idx, .(v_gt, c_gt, a_gt, d_gt)]
-    p.der.exp <- sims.dat$simple_p_given_b_t_arcs(args$branch, args$debug_gts_at_time, 
-                                              my.gt = this.gt, 
-                                              sims.dat = sims.dat)
-    dt.sed.analysis[this.gt, .(gt.cat = paste0(v_gt, c_gt, a_gt, d_gt),
-                               p.der.obs = sum(sed_gt)/.N, .N, p.der.exp),
-                    .(v_gt, c_gt, a_gt, d_gt)]
+  all.gt <- sims.dat$dt.simple_p_given_b_t_arcs[branch == args$branch]
+  debug.gts <- foreach(this.t = args$debug_gts_at_time, .combine = rbind) %:%
+    foreach (gt.idx = 1:nrow(all.gt), .combine = rbind) %:% 
+      foreach (this.rg = all_rg, .combine = rbind) %do% {
+        
+        this.gt <- all.gt[gt.idx, .(v_gt, c_gt, a_gt, d_gt)]
+        this.p.bounds <- sims.dat$dt.simple_p_given_b_t_arcs[this.gt][branch == args$branch]
+        
+        p.der.exp <- sims.dat$simple_p_given_b_t_arcs(args$branch, this.t, 
+                                                      my.gt = this.gt, 
+                                                      sims.dat = sims.dat)
+        if (dt.sed.analysis[rg == this.rg][this.gt, .N] <= 1) return(data.table())
+        cbind(dt.sed.analysis[this.gt][rg == this.rg,
+                                       .(p.der.obs = sum(sed_gt)/.N, .N, p.der.exp),
+                                       .(v_gt, c_gt, a_gt, d_gt, gt.cat)],
+              this.p.bounds[, .(p.low, p.high)],
+              this.t, this.rg)
   }
   
+  debug.gts[, this.lib := tstrsplit(this.rg,'_',keep=1), this.rg]
+  debug.gts[, best.mod := abs(p.der.exp-p.der.obs) == min(abs(p.der.exp-p.der.obs)), .(this.rg, gt.cat)]
+  
   ggplot(debug.gts, aes(x=p.der.exp, p.der.obs, size=N)) + geom_point() +
-    geom_text(data=debug.gts[abs(p.der.exp-p.der.obs) > .1], aes(label=paste0(gt.cat,'_',N)), size=3)
+    geom_text_repel(data=debug.gts[abs(p.der.exp-p.der.obs) > .1], 
+                    aes(label=paste0(gt.cat,'_',N), color=N), size=3) +
+    geom_abline(slope=1) + facet_wrap(this.rg~this.t)
   
+  ggplot(debug.gts[N > 2], aes(x=(p.der.exp-p.der.obs) / (p.low-p.high), y=N)) + geom_point() +
+    geom_text_repel(data=debug.gts, 
+                    aes(label=paste0(gt.cat,'_',N,'_',this.lib), color=N), size=3) +
+    geom_abline(slope=1) + 
+    scale_y_log10() + facet_wrap(this.rg~this.t)
+
+  ggplot(debug.gts[N > 20], aes(x=(p.der.exp-p.der.obs) / (p.low-p.high), y=N, 
+                               color=as.factor(this.t))) +
+    geom_point() +
+    geom_text_repel(data=debug.gts[N > 20 & this.t == min(args$debug_gts_at_time)],
+                    aes(label=paste0(gt.cat,'_',N,'_',this.lib)), size=3, color='black') +
+    geom_vline(xintercept = 0, lty=3) +
+    scale_y_log10() + facet_wrap(~this.rg)
   
+  ggplot(debug.gts, aes(x=(p.der.obs-p.der.exp), y=N, fill=this.lib)) + geom_point() +
+    # geom_text_repel(data=debug.gts[N>30 & v_gt == 1], 
+    #                 aes(label=paste0(gt.cat,'_',N,'_',this.lib), color=abs(p.high - p.low)), size=3) +
+    geom_line(aes(group=gt.cat, color=abs(p.high - p.low))) +
+    # geom_abline(slope=1) + 
+    scale_y_log10() + facet_wrap(~this.t)
+  # + scale_x_log10()
+
+  ggplot(debug.gts, aes(x=(p.der.obs-p.der.exp), y=N, color=this.t)) + 
+    geom_point() +
+    geom_text_repel(data=debug.gts[N>20 & best.mod == T & gt.cat != '0000'],
+                    aes(label=paste0(gt.cat,'_',N), color=this.t), size=3) +
+    geom_line(aes(group=gt.cat)) +
+    # geom_abline(slope=1) + 
+    scale_y_log10() + facet_wrap(~this.rg)
+  
+  ggplot(debug.gts, aes(x=(p.der.obs-p.der.exp), y=N, color=this.t)) + 
+    geom_point() +
+    geom_text_repel(data=debug.gts[best.mod == T & lengths(regmatches(gt.cat, gregexpr("0", gt.cat))) == 2],
+                    aes(label=paste0(gt.cat,'_',N), color=this.t), size=3) +
+    geom_line(aes(group=gt.cat)) +
+    # geom_abline(slope=1) + 
+    scale_y_log10() + facet_wrap(~this.rg)
+  
+  # x.em = sed_EM(dt.sed.analysis[rg %like% 'Mez1' & !gt.cat %like% '^222' & !gt.cat %like% '^222'], 
+  #               sims.dat, my.branch = args$branch, err_rate = 0.001,
+  #               max.iter = 30, ll.converge = 1e-10,
+  #               set.faunal_prop = args$set_faunal_prop,
+  #               set.mh_contam = args$set_mh_contam,
+  #               p_h_method = args$sim_method)
+  
+  if (!interactive()) q()
 }
+
+
+sims.dat$dt.sims.p[, gt.cat := paste0(v, c, a, d)]
+# sims.dat$dt.sims.p[lengths(regmatches(gt.cat, gregexpr("0", gt.cat))) == 2 & time == 0.6001000, 
+#                    gt.cat, 
+#                    keyby=.(n_tot=log(n_tot))]
+# 
+# lengths(regmatches(gt.cat, gregexpr("0", gt.cat))) == 2
+                
+
+
+
+
 
 
 ################
