@@ -98,7 +98,7 @@ if (interactive()) {
   args <- parser$parse_args(strsplit('-gts ~/Downloads/hey.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --debug-gts-at-time 0.7601 --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs sims009.v.0.7601.1 --rg-props .2 .8 --add-contam 0 .1 --downsample 10000 --n-qc1 1000 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
-  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey --debug-gts-at-time 0.5601 0.6501 0.7501 0.8501 --sim-method simple --libs Mez1_R5661 Mez2_A9180 -f-mh f_mh.yri --n-qc1 0 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
+  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs Mez1_R5661 Mez2_A9180 -f-mh f_mh.yri --n-qc1 0 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
   # args <- parser$parse_args(strsplit('--splits ~/Documents/index_cross_contam/data/ludovic/splitstats_ludovic_orlando_001.myformat3.txt -nhits 100 --prefix splitstats_ludovic_orlando_001 -nc 2 --sources 150', split = ' ')[[1]])
 } else {
   args <- parser$parse_args()
@@ -127,10 +127,12 @@ if (is.null(args$script_path)) {
 # getDoParWorkers()
 
 
-# sims.dat <- readRDS('~/Google Drive/branch_point_esimates/sims.dat.RDS')
-sims.dat <- readRDS(args$sims.dat)
-## this 0.004 doesn't matter here, because it's modified in a different function!
-sims.dat <- add_linear_p_given_b_t_arcs(sims.dat, fixed_anc_p = 0.004)
+# # sims.dat <- readRDS('~/Google Drive/branch_point_esimates/sims.dat.RDS')
+# sims.dat <- readRDS(args$sims.dat)
+# ## this 0.004 doesn't matter here, because it's modified in a different function!
+# sims.dat <- add_linear_p_given_b_t_arcs(sims.dat, fixed_anc_p = 0.004)
+
+sims.dat <- generate_sims_dat(args$sims.dat)
 
 
 
@@ -148,7 +150,11 @@ cat('  Libraries in file:', dt.sed.og[, unique(lib)], '\n')
 
 setnames(dt.sed.og, args$f_mh, 'f_mh')
 
-req_columns <- c('sed_gt', 'v_gt', 'c_gt', 'a_gt', 'd_gt', 'f_mh', 'lib')
+## is it an issue that this is a string, and the column is usually T/F?
+if (!'deam53' %in% colnames(dt.sed.og)) dt.sed.og[, deam53 := 'unknown']
+if (!'freqs.FLAG' %in% colnames(dt.sed.og)) dt.sed.og[, freqs.FLAG := '.']
+
+req_columns <- c('sed_gt', 'v_gt', 'c_gt', 'a_gt', 'd_gt', 'f_mh', 'lib', 'deam53')
 if (sum(!req_columns %in% colnames(dt.sed.og)) > 0) {
   cat('Not all required columns are present:\n')
   cat('Required: ', req_columns, '\n')
@@ -166,7 +172,7 @@ if (!'mh' %in% colnames(dt.sed.og) || args$sample_mh_from_freqs)
 dt.sed.og[,.N,freqs.FLAG]
 
 ## ISSUE - could move this to sed_EM? but probably best to remove unexpected columns now
-dt.sed <- dt.sed.og[, .(sed_gt, v_gt, c_gt, a_gt, d_gt, f_mh, mh, lib, freqs.FLAG)]
+dt.sed <- dt.sed.og[, .(sed_gt, v_gt, c_gt, a_gt, d_gt, f_mh, mh, lib, freqs.FLAG, deam53)]
 cat('Filtering rows with NA in required columns:', sum(!complete.cases(dt.sed)), 'sites\n')
 dt.sed <- dt.sed[complete.cases(dt.sed)]
 cat('  Remaining:', dt.sed[, .N], 'sites\n')
@@ -197,8 +203,8 @@ if (args$merge_libs) {
 # dt.sed[, lib := 'sim009']
 # setnames(dt.sed, c('sed', 'mh_f'), c('sed_gt', 'f_mh'))
 
-
-dt.sed[, gt.cat := paste0(v_gt, c_gt, a_gt, d_gt)]
+### ISSUE : allow this to be set dynamically
+dt.sed[, gt.category := paste0(v_gt, c_gt, a_gt, d_gt)]
 
 
 
@@ -382,13 +388,13 @@ if (!is.null(args$debug_gts_at_time)) {
 }
 
 
-sims.dat$dt.sims.p[, gt.cat := paste0(v, c, a, d)]
+# sims.dat$dt.sims.p[, gt.cat := paste0(v, c, a, d)]
 # sims.dat$dt.sims.p[lengths(regmatches(gt.cat, gregexpr("0", gt.cat))) == 2 & time == 0.6001000, 
 #                    gt.cat, 
 #                    keyby=.(n_tot=log(n_tot))]
 # 
 # lengths(regmatches(gt.cat, gregexpr("0", gt.cat))) == 2
-                
+
 
 
 
