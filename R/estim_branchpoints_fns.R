@@ -551,16 +551,32 @@ if (F) {
                                                faunal_prop = 0),
                          err_rate = 0.001,
                          my.branch = 'v', branch_time = .75)
-  
-  
-  
-  
+
   o.t = optimize(function(my.t) q_t(dt.sed.analysis, sims.dat = sims.dat,
                                     branch_time = my.t, my.branch = 'v'),
                  c(0.5585724, 0.8893428),
                  maximum = T)
 }
 
+
+## if blocks > 0, bootstrap over blocks rather than single sites
+## if drop.one > 0, then drop just that block
+bootstrap_gt_data <- function(dt.sed.analysis, blocks = 0, drop.one = 0) {
+  dt <- data.table(dt.sed.analysis)
+  if (blocks == 0) return(dt[sample(.N,.N,replace=T)])
+
+  block.labels <- sort(rep(1:blocks, length.out=dt[, .N]))
+  dt[, block.label := as.character(block.labels)]
+  setkey(dt, block.label)
+  if (drop.one == 0) {
+    these.blocks = as.character(sample(blocks, blocks, replace = T))
+    dt[these.blocks]
+  } else {
+    dt[!as.character(drop.one)]
+  }
+}
+# bootstrap_gt_data(dt.sed.analysis, 100)[, .N, block.label]
+# bootstrap_gt_data(dt.sed.analysis, 10, 3)[, .N, block.label]
 
 
 
@@ -587,6 +603,7 @@ if (F) {
   get_expanded_range(2:10, 4:11)
   get_expanded_range(2:2, 2)
 }
+
 
 sed_grid_search <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, p_h_method = 'full',
                             range.mh_contam = c(0,.3), range.faunal_prop = c(0,.2), range.t = NULL,
