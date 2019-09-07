@@ -589,9 +589,65 @@ if (F) {
 }
 
 sed_grid_search <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, p_h_method = 'full',
-                            bins.mh_contam, bins.faunal_prop, bins.t,
-                            range.mh_contam, range.faunal_prop, range.t,
+                            range.mh_contam = c(0,.3), range.faunal_prop = c(0,.2), range.t = NULL,
+                            bins.mh_contam = 10, bins.faunal_prop = 5, bins.t = 10,
                             nsteps = 3, print.debug = F) {
+  
+  ######
+  ## ISSUE - match.call does lazy-evaluation at its worst, so if e.g. dt.sed.analysis is:
+  ##   dt.sed.analysis[sample(.N, .N, replace=T)]
+  ## then it would randomly sample it for 
+  
+  dt.ret <- foreach (my.b = my.branch, .combine = rbind) %do% {
+    mc = match.call()
+    mc$dt.sed.analysis <- dt.sed.analysis
+    mc$my.branch <- my.b
+    mc[[1]] <- as.name('sed_grid_search_single_branch')
+    eval(mc)
+  }
+  dt.ret[, is.max := ll == max(ll)]
+  dt.ret[, is.top1pct := ll > quantile(ll,.99)]
+  dt.ret
+}
+if (F) {
+  gt.tmp = dt.sed.analysis[lib %like% 'Mez1'][sample(.N, .N, replace=T)]
+  x.grid.mez1 = sed_grid_search(gt.tmp, sims.dat, my.branch = c('v','c', 'anc_1'),
+                           p_h_method = 'simple', range.mh_contam = .0, range.faunal_prop = 0)
+  
+  x.grid.mez1 = sed_grid_search(dt.sed.analysis[lib %like% 'Mez1'][sample(.N, .N, replace=T)],
+                                sims.dat, my.branch = c('v','c', 'anc_1'),
+                                p_h_method = 'simple', range.mh_contam = .02, range.faunal_prop = 0, nsteps = 2)
+  x.grid.mez1
+  ggplot(x.grid.mez1, aes(y=ll, x=my.t, color=my.branch)) + geom_line() + geom_point(data=x.grid.mez1[is.max == T])
+  
+}
+
+sed_grid_search_single_branch <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, p_h_method = 'full',
+                            range.mh_contam = c(0,.3), range.faunal_prop = c(0,.2), range.t = NULL,
+                            bins.mh_contam = 10, bins.faunal_prop = 5, bins.t = 10,
+                            nsteps = 3, print.debug = F) {
+  cat('Grid search on', my.branch)
+  ## if the user sets only a single value for the range of values to search, then set it up so the code still works [i.e. so it's still a range]
+  if (length(range.mh_contam) == 1) {
+    range.mh_contam <- rep(range.mh_contam, 2)
+    bins.mh_contam <- 1
+  }
+  if (length(range.faunal_prop) == 1) {
+    range.faunal_prop <- rep(range.faunal_prop, 2)
+    bins.faunal_prop <- 1
+  }
+  if (length(range.t) == 1) {
+    range.t <- rep(range.t, 2)
+    bins.t <- 1
+  }
+  
+  if (is.null(range.t)) {
+    range.t <- sims.dat$branch.bounds[my.branch, c(t.low, t.high), on='branch']
+    # cat(range.t, '\n')
+    # cat(bins.t, '\n')
+  }
+  
+  
   dt.ret = data.table()
   for (step.x in 1:nsteps) {
     ## do a grid search
@@ -625,6 +681,7 @@ sed_grid_search <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.0
   }
   dt.ret[, is.max := ll == max(ll)]
   dt.ret[, is.top1pct := ll > quantile(ll,.99)]
+  dt.ret[, my.branch := my.branch]
   dt.ret
 }
 if (F) {
