@@ -85,6 +85,13 @@ parser$add_argument("-sites", "--sites", required=F, default = 'all', nargs='+',
                     help='Site categories to use. Can be a list. Options: all, poly_archaic, poly_neand, mh_seg_arc_fixed0')
 parser$add_argument("-method", "--sim-method", required=F, default = 'simple',
                     help='Site categories to use [not currently implemented]')
+parser$add_argument("-include-ti", "--include-ti", required=F, action='store_true',
+                    help='By default, the script removes transitions. This includes them. Will probably change later')
+parser$add_argument("-ag-cols", "--aggregate-gt-columns", required=F, default = c('v_gt', 'c_gt', 'a_gt', 'd_gt'), 
+                    nargs='+', dest = 'aggregate_gt_columns',
+                    help='Use these columns from the simulations to model p(test=der).  Default is to use v_gt,c_gt,a_gt,d_gt [all archaics]')
+
+
 
 parser$add_argument("-script-path", "--script-path", required=F, default = NULL,
                     help='A hack to let R find the path for scripts to source.')
@@ -98,7 +105,8 @@ if (interactive()) {
   args <- parser$parse_args(strsplit('-gts ~/Downloads/hey.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --debug-gts-at-time 0.7601 --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs sims009.v.0.7601.1 --rg-props .2 .8 --add-contam 0 .1 --downsample 10000 --n-qc1 1000 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
-  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs Mez1_R5661 Mez2_A9180 -f-mh f_mh.yri --n-qc1 0 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
+  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 --branch v -niter 10 -table hey.txt', split = ' ')[[1]])
+  #  Mez2_A9180
   # args <- parser$parse_args(strsplit('--splits ~/Documents/index_cross_contam/data/ludovic/splitstats_ludovic_orlando_001.myformat3.txt -nhits 100 --prefix splitstats_ludovic_orlando_001 -nc 2 --sources 150', split = ' ')[[1]])
 } else {
   args <- parser$parse_args()
@@ -119,8 +127,12 @@ if ( length(args$rg_props) != length(args$add_contam) || length(args$rg_props) !
 
 if (is.null(args$script_path)) {
   source(here('R/estim_branchpoints_fns.R'))
+  source(here('R/read_data_fns.R'))
+  source(here('R/read_sims_fns.R'))
 } else {
   source(paste0(args$script_path, '/estim_branchpoints_fns.R'))
+  source(paste0(args$script_path, '/read_data_fns.R'))
+  source(paste0(args$script_path, '/read_sims_fns.R'))
 }
 
 # registerDoParallel(cores=args$ncores)
@@ -134,147 +146,17 @@ if (is.null(args$script_path)) {
 
 sims.dat <- generate_sims_dat(args$sims.dat)
 
-
-
-
-# dt.sed.og <- fread('~/Google Drive/branch_point_esimates/all_simple_gts.tsv.gz')
-                                        # dt.sed.og <- fread('~/Downloads/all_simple_gts.tsv.gz')
-cat('Reading genotypes..', args$simple_gts, '\n')
-dt.sed.og <- fread(args$simple_gts)
-cat('  Read:', dt.sed.og[, .N], 'sites\n')
-cat('  Libraries in file:', dt.sed.og[, unique(lib)], '\n')
-
-
 ####
-## confirm that all of the correct columns are present
+## read genotypes
 
-setnames(dt.sed.og, args$f_mh, 'f_mh')
+dt.sed.analysis <- read_and_process_genos(args$simple_gts, f_mh.col = args$f_mh, agCols = args$aggregate_gt_columns,
+                                          keep.libs = args$libs, sample_mh_from_freq = args$sample_mh_from_freqs,
+                                          include_ti = args$include_ti, merge_libs = args$merge_libs, 
+                                          site.cats = args$site_cat,
+                                          n_qc0 = args$n_qc0, 
+                                          n_qc1 = args$n_qc1,
+                                          downsample = args$downsample, rg_props = args$rg_props)
 
-## is it an issue that this is a string, and the column is usually T/F?
-if (!'deam53' %in% colnames(dt.sed.og)) dt.sed.og[, deam53 := 'unknown']
-if (!'freqs.FLAG' %in% colnames(dt.sed.og)) dt.sed.og[, freqs.FLAG := '.']
-
-req_columns <- c('sed_gt', 'v_gt', 'c_gt', 'a_gt', 'd_gt', 'f_mh', 'lib', 'deam53')
-if (sum(!req_columns %in% colnames(dt.sed.og)) > 0) {
-  cat('Not all required columns are present:\n')
-  cat('Required: ', req_columns, '\n')
-  cat('Missing: ', req_columns[!req_columns %in% colnames(dt.sed.og)], '\n')
-  stop()
-}
-
-## if there's no mh column, then sample from f_mh
-## anyway, we require complete.cases for f_mh
-dt.sed.og <- dt.sed.og[!is.na(dt.sed.og$f_mh)]
-if (!'mh' %in% colnames(dt.sed.og) || args$sample_mh_from_freqs) 
-    dt.sed.og$mh <- sapply(dt.sed.og[, f_mh], function(f_mh) sample(0:1, 1, prob = c(1-f_mh,f_mh)))
-# ggplot(dt.sed.og[, .(p = sum(mh)/.N, .N), f_mh], aes(x=f_mh, y=p, size=N)) + geom_point()
-
-dt.sed.og[,.N,freqs.FLAG]
-
-## ISSUE - could move this to sed_EM? but probably best to remove unexpected columns now
-dt.sed <- dt.sed.og[, .(sed_gt, v_gt, c_gt, a_gt, d_gt, f_mh, mh, lib, freqs.FLAG, deam53)]
-cat('Filtering rows with NA in required columns:', sum(!complete.cases(dt.sed)), 'sites\n')
-dt.sed <- dt.sed[complete.cases(dt.sed)]
-cat('  Remaining:', dt.sed[, .N], 'sites\n')
-
-dt.sed <- dt.sed[!freqs.FLAG %like% 'transi']
-
-
-if (!is.null(args$libs)) {
-    if (sum(!args$libs %in% dt.sed[, unique(lib)]) > 0) {
-        cat('Requested library is not in dataset:', args$libs[!args$libs %in% dt.sed[, unique(lib)]], '\n')
-        q(save='no', status=1)
-    }
-    cat('Filtering requested libraries: ', args$libs, '\n')
-    dt.sed <- dt.sed[lib %in% args$libs]
-    cat('Keeping: ', dt.sed[, .N], 'sites\n')
-} else {
-  ## not really necessary, takes up a lot more space...
-  dt.sed <- data.table(dt.sed)
-  cat('Using all libraries\n')
-}
-
-if (args$merge_libs) {
-  dt.sed[, lib := 'merged_libs']
-  cat('Merging libraries\n')
-}
-
-# ## set up simulated data, because I didn't previously fill this in
-# dt.sed[, lib := 'sim009']
-# setnames(dt.sed, c('sed', 'mh_f'), c('sed_gt', 'f_mh'))
-
-### ISSUE : allow this to be set dynamically
-dt.sed[, gt.category := paste0(v_gt, c_gt, a_gt, d_gt)]
-
-
-
-if ('all' %in% args$site_cat || 'poly_arc' %in% args$site_cat) {
-  dt.sed.poly.full <- dt.sed[!(v_gt == c_gt & v_gt == a_gt & v_gt == d_gt)]
-  cat('Polymorphic in archaic: ', dt.sed.poly.full[, .N], 'sites\n')
-} else if ('poly_neand' %in% args$site_cat) {
-  dt.sed.poly.full <- dt.sed[!(v_gt == c_gt & v_gt == a_gt)]
-  cat('Polymorphic in neands: ', dt.sed.poly.full[, .N], 'sites\n')
-} else {
-  dt.sed.poly.full <- data.table()
-}
-
-# dt.sed.poly.full[, deam53 := rep(c(T,T,F,F,F), length.out = .N)]
-# dt.sed.poly.full[, f_mh := f_mh / 99]
-# dt.sed.poly.full[, pos := NULL]
-
-if ('all' %in% args$site_cat || 'mh_seg_arc_fixed0' %in% args$site_cat) {
-  dt.sed.mh.full <- dt.sed[v_gt == c_gt & v_gt == a_gt & v_gt == d_gt & v_gt == 0 & f_mh > 0]
-  cat('Ancestral in archaics, seg in MH: ', dt.sed.mh.full[, .N], 'sites\n')
-} else {
-  dt.sed.mh.full <- data.table()
-}
-# dt.sed.mh.full[, deam53 := rep(c(T,T,F,F,F), length.out = .N)]
-# dt.sed.mh.full[, f_mh := f_mh / 99]
-# dt.sed.mh.full[, pos := NULL]
-
-## simulate QC sites - but should also save QC sites in real data [code to do this is in an older scratch file]
-dt.sed.qc.full <- foreach(my.lib = dt.sed.poly.full[, unique(lib)], .combine = rbind) %do% {
-  ## just duplicate the first row of dt.sed.poly.full the correct number of times
-  dt.sed.qc.full <- dt.sed.poly.full[lib == my.lib][rep(1, args$n_qc0 + args$n_qc1)]
-  
-  qc_fill_freq_or_hap <- c(rep(0,args$n_qc0), rep(1,args$n_qc1))
-  qc_fill_gt <- c(rep(0,args$n_qc0), rep(2,args$n_qc1))
-  
-  dt.sed.qc.full[, f_mh := qc_fill_freq_or_hap]
-  dt.sed.qc.full[, mh := qc_fill_freq_or_hap]
-  dt.sed.qc.full[, v_gt := qc_fill_gt]
-  dt.sed.qc.full[, c_gt := qc_fill_gt]
-  dt.sed.qc.full[, a_gt := qc_fill_gt]
-  dt.sed.qc.full[, d_gt := qc_fill_gt]
-  dt.sed.qc.full[, sed_gt := qc_fill_freq_or_hap]
-  dt.sed.qc.full
-}
-
-## downsample reads if necessary
-## not really necessary to make new data.tables, takes up a lot more space...
-dt.sed.poly <- data.table(dt.sed.poly.full)
-dt.sed.mh <- data.table(dt.sed.mh.full)
-dt.sed.qc <- data.table(dt.sed.qc.full)
-
-nreads <- dt.sed.poly[, .N] + dt.sed.mh[, .N]
-
-if (args$downsample > 0) dt.sed.poly <- dt.sed.poly[sample(.N, .N / nreads * args$downsample)]
-dt.sed.mh <- data.table(dt.sed.mh.full)
-if (args$downsample > 0) dt.sed.mh <- dt.sed.mh[sample(.N, .N / nreads * args$downsample)]
-dt.sed.analysis <- rbind(dt.sed.mh, dt.sed.qc, dt.sed.poly)
-args$nreads <- dt.sed.poly[, .N] + dt.sed.mh[, .N] + dt.sed.qc[, .N]
-if (args$downsample > 0) cat('Downsample to requested number of sites: ', args$nreads, 'sites\n')
-
-
-####################
-## create read groups
-
-## make sure that proportions sum to 1
-args$rg_props <- args$rg_props / sum(args$rg_props)
-
-## ISSUE - this doesn't work correctly if there are multple libraries and multiple read groups,
-## because you end up with more read groups than contam proportions, etc
-dt.sed.analysis[, rg := paste0(lib, '_rg_', sample(1:length(args$rg_props), .N, replace = T, prob = args$rg_props))]
 
 
 ####################

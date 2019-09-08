@@ -16,111 +16,6 @@ print_tables = F
 
 
 
-####
-## essentially reconstruct a sims.dat from dt.sims.p table
-## eventually allow any combination of genotypes?
-
-
-read_sims <- function(simsfile) {
-  dt.sims.p = fread(simsfile)
-  
-  ### ISSUE : have to eventually allow this to be flexible, and to *recalculate* p(der) based on the columns selected
-  ### ISSUE : also have to make sure that everything is polymorphic when taking the probabilities from the sims
-  ###  i.e., if the user requests v/c/a, but d/mh were in the sims, then p(der) at 000 sites represents p(der) when d/mh are polymorphic
-  setnames(dt.sims.p, c('v', 'a', 'c', 'd'), c('v_gt', 'c_gt', 'a_gt', 'd_gt'))
-  dt.sims.p[, gt.category := paste0(v_gt, c_gt, a_gt, d_gt)]
-
-  setkey(dt.sims.p, gt.category)
-  
-  all.branches = dt.sims.p[, .(time = max(time)), branch]
-  setkey(all.branches, time)
-  trunk.branch <- all.branches[.N, branch]
-  x.branch = ''
-  for(x in 1:all.branches[, .N-1]) {
-    t1 = all.branches[x, time]
-    t2 = all.branches[x+1, time]
-    dt.sims.p.tmp <- dt.sims.p[time == t1 & (branch == trunk.branch | branch == x.branch)]
-    x.branch = sprintf('anc_%d', x)
-    ## print(dt.sims.p.tmp)
-    dt.sims.p.tmp[, branch := x.branch]
-    dt.sims.p[branch == trunk.branch & time > t1 & time <= t2, branch := x.branch]
-    dt.sims.p <- rbind(dt.sims.p, dt.sims.p.tmp)
-  }
-  setkey(dt.sims.p, gt.category)
-  branch.bounds <- dt.sims.p[, .(t.low = min(time), t.high = max(time)), branch]
-  branch.bounds[, constr := 'high']
-  branch.bounds[branch %like% 'anc', constr := 'both']
-  branch.bounds[branch == x.branch, constr := 'low']
-  inner.node.times <- branch.bounds[branch %like% 'anc', sort(t.low)]
-  ret <- list()
-  ret$dt.sims.p <- dt.sims.p
-  ret$branch.bounds <- branch.bounds
-  ret$inner.node.times <- inner.node.times
-  ret$branches <- branch.bounds$branch
-  ret
-}
-# read_sims('sims_og_newrun.txt')
-
-
-generate_sims_dat <- function(simsfile, fixed_anc_p = 0.003, fixed_der_p = 0.999) {
-  
-  sims.dat <- read_sims(simsfile)
-  # setnames(sims.dat$dt.sims.p, c('v', 'a', 'c', 'd'), c('v_gt', 'c_gt', 'a_gt', 'd_gt'))
-  
-  ## bounds for branch
-  bounds.for.branch <- function(b, which.bound, sims.dat) {
-    bc <- sims.dat$branch.bounds[branch == b]
-    if (which.bound == 'high') {
-      return(bc$t.high)
-    }
-    if (which.bound == 'low') {
-      return(bc$t.low)
-    }
-    if (which.bound == 'mid') {
-      return(mean(c(bc$t.high, bc$t.low)))
-    }
-    return(NA)
-  }
-  
-  sims.dat$bounds.for.branch <- bounds.for.branch
-  
-  # ## have to make:
-  # sims.dat$bounds.for.branch()
-  # sims.dat$branch.bounds
-  # sims.dat$branches
-  sims.dat
-  
-  
-  sims.dat$dt.sims.p[gt.category == '1210', .(t.low = min(time), p.low = min(p),
-                                              t.high = min(time), p.high = max(p)), .(gt.category, branch)]
-  
-  x = merge(sims.dat$dt.sims.p, sims.dat$branch.bounds, by='branch')
-  sims.dat$dt.simple_p_given_b_t_arcs <- merge(x[t.low == time, .(t.low, p.low = p), keyby=.(gt.category, branch)],
-                                               x[t.high == time, .(t.high, p.high = p), keyby=.(gt.category, branch)])
-  
-  setkey(sims.dat$dt.simple_p_given_b_t_arcs, gt.category)
-  
-  ## sites where all archaics are fixed aren't a good match for the simulations
-  ## both because they can be 'QC' sites, and thus
-  sims.dat$dt.simple_p_given_b_t_arcs['0000', p.low := fixed_anc_p]
-  sims.dat$dt.simple_p_given_b_t_arcs['0000', p.high := fixed_anc_p]
-  sims.dat$dt.simple_p_given_b_t_arcs['2222', p.low := fixed_der_p]
-  sims.dat$dt.simple_p_given_b_t_arcs['2222', p.high := fixed_der_p]
-  
-  sims.dat$simple_p_given_b_t_arcs <- function(my.b, my.t, my.gt, sims.dat) {
-    sims.dat$dt.simple_p_given_b_t_arcs[my.gt][my.b == branch][, p.low + (my.t-t.low)/(t.high-t.low) * (p.high-p.low)]
-  }
-  sims.dat
-  
-}
-if (F) {
-  generate_sims_dat('data/sims_og_newrun.txt')$bounds.for.branch('v', 'low', generate_sims_dat('sims_og_newrun.txt'))
-  generate_sims_dat('data/sims_og_newrun.txt')$simple_p_given_b_t_arcs('v', 0.7801, '1000', generate_sims_dat('sims_og_newrun.txt'))
-  generate_sims_dat('data/sims_og_newrun.txt')$simple_p_given_b_t_arcs('v', 0.7811, '1000', generate_sims_dat('sims_og_newrun.txt'))
-  generate_sims_dat('data/sims_og_newrun.txt')$simple_p_given_b_t_arcs('v', 0.7821, '1000', generate_sims_dat('sims_og_newrun.txt'))
-}
-
-
 
 
 #######
@@ -1006,8 +901,8 @@ sed_EM_allbranch <- function(dt.sed.analysis, sims.dat, err_rate = 0.001, max.it
 # # test.gts <- fread('zcat output_v4/all_simple_gts.deam.tsv.gz | head -n1000')
 # 
 # 
-dt.sims.p = fread('~/GoogleDrive/soil_dna_capture/simulate_demog/dt.sims.p.simfiles004.txt')
-setnames(dt.sims.p, c('v', 'a', 'c', 'sed'), c('v_gt', 'c_gt', 'a_gt', 'sed_gt'))
+# dt.sims.p = fread('~/GoogleDrive/soil_dna_capture/simulate_demog/dt.sims.p.simfiles004.txt')
+# setnames(dt.sims.p, c('v', 'c', 'a', 'sed'), c('v_gt', 'c_gt', 'a_gt', 'sed_gt'))
 # dt.sims.p.coarse = dt.sims.p[!endsWith(paste(time), '01') | endsWith(paste(time), '001')]
 
 apply_contam <- function(dt, contam=0.05) {
@@ -1168,25 +1063,57 @@ if (F) {
   ########  THIS DOESN'T WORK BECAUSE SIMPLE_P DOESN'T "REMEMBER" N_DER AND N_TOT, SO YOU CAN'T RECOMPUTE P WITHOUT DEN
   ## WOULD HAVE TO MAKE THE GENERATE FUNCTION SO IT CAN TAKE A SET OF COLUMNS TO USE FOR GENERATING THE DATA
 
-  dt.new_og_sims <- sims.dat.newog$branch.bounds[, .(time = seq(t.low, t.high, .1)), branch]
-  dt.new_og_sims <- merge(unique(sims.dat.newog$dt.sims.p[, .(v_gt, c_gt, a_gt, d_gt, branch)]), dt.new_og_sims, by='branch', allow.cartesian = T)
-  dt.new_og_sims[, gt.category := paste0(v_gt, c_gt, a_gt, d_gt)]
+
   
-  dt.new_og_sims <- rbind(dt.new_og_sims[, .(sed = 1, p = sims.dat.newog$simple_p_given_b_t_arcs(branch, time, '0001', sims.dat.newog)),
-                                         by = .(branch, time, v_gt, c_gt, a_gt, d_gt, gt.category)],
-                          dt.new_og_sims[, .(sed = 0, p = 1-sims.dat.newog$simple_p_given_b_t_arcs(branch, time, '0001', sims.dat.newog)),
-                                         by = .(branch, time, v_gt, c_gt, a_gt, d_gt, gt.category)])
+  dt.new_og_sims.raw <- fread('data/sims_og_newrun.txt')
+  dt.new_og_sims.raw[, gt.category := paste0(v, c, a)]
+  dt.new_og_sims.raw.polyn <- rbind(dt.new_og_sims.raw[, .(sed = 0, p = 1-sum(n_der)/sum(n_tot)), .(v, c, a, gt.category, branch, time)],
+                                    dt.new_og_sims.raw[, .(sed = 1, p =   sum(n_der)/sum(n_tot)), .(v, c, a, gt.category, branch, time)])
   
-  dt.new_og_sims <- fread('data/sims_og_newrun.txt')
-  dt.new_og_sims.polyn <- rbind(dt.new_og_sims[, .(sed = 0, p = 1-sum(n_der)/sum(n_tot)), .(v, c, a, branch, time)],
-                                dt.new_og_sims[, .(sed = 1, p =   sum(n_der)/sum(n_tot)), .(v, c, a, branch, time)])
-  
-  setnames(dt.new_og_sims.polyn, c('v', 'c', 'a', 'sed'), c('v_gt', 'c_gt', 'a_gt', 'sed_gt'))
-  lik.res <- demog_composite_liks(dt.new_og_sims.polyn, dt.sed.poly[sample(.N, 5000, replace = T), .(v_gt, c_gt, a_gt, sed_gt, lib)])
-  lik.res <- demog_composite_liks(dt.new_og_sims.polyn, dt.sed.poly[, .(v_gt, c_gt, a_gt, sed_gt, lib)])
+  setnames(dt.new_og_sims.raw.polyn, c('v', 'c', 'a', 'sed'), c('v_gt', 'c_gt', 'a_gt', 'sed_gt'))
+  # lik.res <- demog_composite_liks(dt.new_og_sims.raw.polyn, dt.sed.poly[sample(.N, 5000, replace = T), .(v_gt, c_gt, a_gt, sed_gt, lib)])
+  lik.res <- demog_composite_liks(dt.new_og_sims.raw.polyn, dt.sed.poly[, .(v_gt, c_gt, a_gt, sed_gt, lib)])
   ggplot(lik.res$full.tree, aes(x=time, y=ll, color=branch, lty=lib)) + geom_line()
   ## this is just *very* coarse, but it does seem to point that my new simulations accurately represent 
   ## the old simulations, and give the "correct" answers for Mez1 and Mez2
+  
+  sims.dat.newog.onlyn <- generate_sims_dat('data/sims_og_newrun.txt', agCols = c('v_gt', 'c_gt', 'a_gt'))
+  
+  dt.new_og_sims <- sims.dat.newog.onlyn$branch.bounds[, .(time = c(seq(t.low, t.high, .02), t.high)), branch]
+  dt.new_og_sims <- merge(unique(sims.dat.newog.onlyn$dt.sims.p[, .(v_gt, c_gt, a_gt, gt.category, branch)]), dt.new_og_sims, by='branch', allow.cartesian = T)
+
+  dt.new_og_sims <- rbind(dt.new_og_sims[, .(sed_gt = 1, p = sims.dat.newog.onlyn$simple_p_given_b_t_arcs(branch, time, gt.category, sims.dat.newog.onlyn)),
+                                         by = .(branch, time, v_gt, c_gt, a_gt, gt.category)],
+                          dt.new_og_sims[, .(sed_gt = 0, p = 1-sims.dat.newog.onlyn$simple_p_given_b_t_arcs(branch, time, gt.category, sims.dat.newog.onlyn)),
+                                         by = .(branch, time, v_gt, c_gt, a_gt, gt.category)])
+  lik.res <- demog_composite_liks(dt.new_og_sims, dt.sed.poly[, .(v_gt, c_gt, a_gt, sed_gt, lib)])
+  p1 <- ggplot(lik.res$full.tree, aes(x=time, y=ll, color=branch, lty=lib)) + geom_line() + 
+    geom_point(data=lik.res$full.tree[ll == ll.max]) + ggtitle('composite likelihood')
+  p1
+  # lik.res <- demog_composite_liks(dt.new_og_sims, bootstrap_gt_data(dt.sed.poly[, .(v_gt, c_gt, a_gt, sed_gt, lib)], blocks = 10, drop.one = 5))
+  # ggplot(lik.res$full.tree, aes(x=time, y=ll, color=branch, lty=lib)) + geom_line()
+  
+  dt.sed.poly.tst <- data.table(dt.sed.poly)
+  dt.sed.poly.tst[, rg := 'hey']
+  dt.sed.poly.tst[, gt.category := paste0(v_gt, c_gt, a_gt)]
+  dt.sed.poly.tst.gridll = sed_grid_search(dt.sed.poly.tst, sims.dat.newog.onlyn, my.branch = c('v','c','anc_1', 'anc_2', 'anc_3', 'a', 'd'),
+                                           err_rate = 0.001, p_h_method = 'simple', nsteps = 2,
+                                           range.mh_contam = 0.025, range.faunal_prop = 0)
+  dt.sed.poly.tst.gridll
+  p2 <- ggplot(dt.sed.poly.tst.gridll, aes(x=my.t, y=ll, color=my.branch)) + geom_line() + 
+    geom_point(data=dt.sed.poly.tst.gridll[is.max == T]) + ggtitle('grid search full likelihood contam=0.025')
+  p2
+  
+  # ggsave('figures/demog_newog_composite_lik_mez1.pdf')
+  
+  
+  
+  ###############################333
+  ###############################333 debugging ^^^
+  ###############################333
+  
+  
+  
   
   ## maybe I continue with my programming project?  or first just write code to modify these into "simple"
   ## linear models for the existing EM code?
@@ -1194,14 +1121,14 @@ if (F) {
   #
   
   
-  sims.dat.newog <- generate_sims_dat('sims_og_newrun.txt')
+  sims.dat.newog <- generate_sims_dat('data/sims_og_newrun.txt')
   dt.sed.poly.tst <- data.table(dt.sed.poly)
   dt.sed.poly.tst[, gt.category := paste0(v_gt, c_gt, a_gt, d_gt)]
   # dt.sed.poly.tst <- dt.sed.poly.tst[!(v_gt == c_gt & v_gt == a_gt)]
   # dt.sed.poly.tst[lib %like% 'Mez1']
   dt.sed.poly.tst[, rg := 'hey']
-  dt.sed.analysis[, gt.category := gt.cat]
-  x.em = sed_EM(dt.sed.analysis[lib %like% 'Mez2'], sims.dat.newog, my.branch = 'v', err_rate = 0.001,
+  # dt.sed.analysis[, gt.category := gt.cat]
+  x.em = sed_EM(dt.sed.analysis[lib %like% 'Mez1'], sims.dat.newog, my.branch = 'v', err_rate = 0.001,
                 max.iter = 40, ll.converge = 1e-10,
                 set.faunal_prop = 0,
                 set.mh_contam = 'estim',
