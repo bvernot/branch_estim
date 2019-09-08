@@ -456,8 +456,8 @@ if (F) {
 
 ## if blocks > 0, bootstrap over blocks rather than single sites
 ## if drop.one > 0, then drop just that block
-bootstrap_gt_data <- function(dt.sed.analysis, blocks = 0, drop.one = 0) {
-  dt <- data.table(dt.sed.analysis)
+bootstrap_gt_data <- function(dt.sed.analysis, blocks = 0, drop.one = 0, shuffle_first = T) {
+  dt <- data.table(dt.sed.analysis[sample(.N)])
   if (blocks == 0) return(dt[sample(.N,.N,replace=T)])
 
   block.labels <- sort(rep(1:blocks, length.out=dt[, .N]))
@@ -509,13 +509,28 @@ sed_grid_search <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.0
   ## ISSUE - match.call does lazy-evaluation at its worst, so if e.g. dt.sed.analysis is:
   ##   dt.sed.analysis[sample(.N, .N, replace=T)]
   ## then it would randomly sample it for 
+  ######
+  ## NEW ISSUE : any time sed_grid_search_single_branch changes, this also has to change
   
   dt.ret <- foreach (my.b = my.branch, .combine = rbind) %do% {
-    mc = match.call()
-    mc$dt.sed.analysis <- dt.sed.analysis
-    mc$my.branch <- my.b
-    mc[[1]] <- as.name('sed_grid_search_single_branch')
-    eval(mc)
+    # mc = match.call()
+    # mc$dt.sed.analysis <- dt.sed.analysis
+    # mc$my.branch <- my.b
+    # mc[[1]] <- as.name('sed_grid_search_single_branch')
+    # eval(mc)
+    sed_grid_search_single_branch(dt.sed.analysis = dt.sed.analysis, 
+                                  sims.dat = sims.dat, 
+                                  my.branch = my.b, ## only difference
+                                  err_rate = err_rate,
+                                  p_h_method = p_h_method,
+                                  range.mh_contam = range.mh_contam,
+                                  range.faunal_prop = range.faunal_prop, 
+                                  range.t = range.t,
+                                  bins.mh_contam = bins.mh_contam,
+                                  bins.faunal_prop = bins.faunal_prop,
+                                  bins.t = bins.t,
+                                  nsteps = nsteps,
+                                  print.debug = print.debug)
   }
   dt.ret[, is.max := ll == max(ll)]
   dt.ret[, is.top1pct := ll > quantile(ll,.99)]
@@ -868,12 +883,22 @@ ll_ret_to_dt <- function(my.ret, sites.cat) {
 }
 # ll_ret_to_dt(my.ret$a, args$site_cat)
 
-sed_EM_allbranch <- function(dt.sed.analysis, sims.dat, err_rate = 0.001, max.iter = 20, ll.converge = 0, p_h_method = 'full') {
+# function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, max.iter = 20, ll.converge = 0, 
+#          set.branchtime = 'estim', set.mh_contam = 'estim', set.faunal_prop = 'estim', p_h_method = 'full',
+#          fail_on_neg_change = F, fail_on_neg_change_q = F)
+
+sed_EM_allbranch <- function(dt.sed.analysis, sims.dat, branches = NULL, ...) {
   ret = list()
   max.ll = -1e200
-  for (my.branch in sims.dat$branches) {
-    ret[[my.branch]] <- sed_EM(dt.sed.analysis = dt.sed.analysis, sims.dat = sims.dat, my.branch = my.branch, err_rate = err_rate, max.iter = max.iter, ll.converge = ll.converge, p_h_method = p_h_method)
-    if (ret[[my.branch]]$max.ll > max.ll) ret$max <- ret[[my.branch]]
+  if (is.null(branches)) branches <- sims.dat$branches
+  for (my.branch in branches) {
+    ret[[my.branch]] <- sed_EM(dt.sed.analysis = dt.sed.analysis, sims.dat = sims.dat, my.branch = my.branch, ...)
+    ### ISSUE - manual vs q-ll
+    ## here I use the manual ll, because the q-based ll was giving inconsistent results across the branches
+    ## i.e., the manual ll may be highest for 'v', and the q-ll highest for anc_1.  I think this is because
+    ## the q-ll "remembers" the path it took to get there [in the form of gamma], and so it's not comparable
+    ## across branches. I'm not 100% on this, though.
+    if (ret[[my.branch]]$man.max.ll > man.max.ll) ret$max <- ret[[my.branch]]
   }
   ret
 }
@@ -889,6 +914,61 @@ sed_EM_allbranch <- function(dt.sed.analysis, sims.dat, err_rate = 0.001, max.it
 #   # if (ret$max.ll > max.ll) ret$max <- ret[[my.branch]]
 #   my.ret
 # }
+
+
+
+###########################33
+## this just runs some analyses that approach what we would want to do with each sample
+
+
+run_simple_analysis <- function(dt.sed.analysis, sims.dat, branches = c('c','v','anc_1'), blocks = 10, nbootstraps = 0, max.iter = 30) {
+  dt.sed.analysis.em <- sed_EM_allbranch(dt.sed.analysis,
+                                         sims.dat, 
+                                         branches = branches,
+                                         err_rate = 0.001,
+                                         max.iter = max.iter, ll.converge = 1e-6,
+                                         set.faunal_prop = 'estim',
+                                         set.mh_contam = 'estim',
+                                         p_h_method = 'simple')
+  
+  dt.sed.analysis.em.theta <- merge(dt.sed.analysis[, .N, rg], dt.sed.analysis.em$max$dt.theta)
+  dt.sed.analysis.em.theta[, sum(mh_contam * N / sum(N))]
+  
+  dt.sed.analysis.gridll = sed_grid_search(dt.sed.analysis,
+                                           sims.dat, my.branch = branches,
+                                           err_rate = 0.001, p_h_method = 'simple', nsteps = 2,
+                                           range.mh_contam = dt.sed.analysis.em.theta[, sum(mh_contam * N / sum(N))],
+                                           range.faunal_prop = dt.sed.analysis.em.theta[, sum(faunal_prop * N / sum(N))])
+  
+  p1 <- ggplot(dt.sed.analysis.gridll, aes(x=my.t, y=ll, color=my.branch)) + geom_line() + 
+    geom_point(data=dt.sed.analysis.gridll[is.max == T]) + ggtitle('grid search full likelihood')
+  p1
+  
+  ret <- list()
+  ret$em <- dt.sed.analysis.em
+  ret$grid <- dt.sed.analysis.gridll
+  ret$em.theta <- dt.sed.analysis.em.theta
+  ret$p1 <- p1
+  
+  if (nbootstraps > 0) {
+    dt.sed.analysis.gridll.bootstraps <- foreach(iter = 1:nbootstraps, .combine = rbind) %do% {
+      cat('\n\nBootstrap', iter, '\n')
+      sed_grid_search(bootstrap_gt_data(dt.sed.analysis, blocks),
+                      sims.dat, my.branch = branches,
+                      err_rate = 0.001, p_h_method = 'simple', nsteps = 2,
+                      range.mh_contam = dt.sed.analysis.em.theta[, sum(mh_contam * N / sum(N))],
+                      range.faunal_prop = dt.sed.analysis.em.theta[, sum(faunal_prop * N / sum(N))])
+    }
+    p1.boots <- ggplot(dt.sed.analysis.gridll, aes(x=my.t, y=ll, color=my.branch)) + geom_line() + 
+      geom_point(data=dt.sed.analysis.gridll.bootstraps[is.max == T], 
+                 y=dt.sed.analysis.gridll[is.max == T, ll], alpha=.5) +
+      ggtitle('grid search full likelihood')
+    ret$p1.boots <- p1.boots
+    ret$grid.bootstraps <- dt.sed.analysis.gridll.bootstraps
+  }
+  ret
+}
+
 
 
 

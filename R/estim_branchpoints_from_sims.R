@@ -82,7 +82,7 @@ parser$add_argument("-rg-props", "--rg-props", type='double', default=1, nargs='
                     help="Randomly split the simulations into read groups with these proportions")
 
 parser$add_argument("-sites", "--sites", required=F, default = 'all', nargs='+', dest = 'site_cat',
-                    help='Site categories to use. Can be a list. Options: all, poly_archaic, poly_neand, mh_seg_arc_fixed0')
+                    help='Site categories to use. Can be a list. Options: all, poly_archaic, poly_neand, mh_seg_arc_fixed0, sed_qc_hominin')
 parser$add_argument("-method", "--sim-method", required=F, default = 'simple',
                     help='Site categories to use [not currently implemented]')
 parser$add_argument("-include-ti", "--include-ti", required=F, action='store_true',
@@ -293,11 +293,15 @@ if (!is.null(args$branch)) {
                 set.faunal_prop = args$set_faunal_prop,
                 set.mh_contam = args$set_mh_contam,
                 p_h_method = args$sim_method)
+  if (!is.null(args$output_table)) {
+    fwrite(ll_ret_to_dt_sims(x.em, args), args$output_table, sep='\t')
+    x.em$args <- args
+    saveRDS(x.em, paste0(args$output_table,'.RDS'))
+  }
+} else {
+  dt.sed.analysis.ret <- run_simple_analysis(dt.sed.analysis, sims.dat, branches = c('c','v','anc_1', 'a', 'd', 'anc_2'), blocks = 10, nbootstraps = 10, max.iter = 40)
+  dt.sed.analysis.ret$tag <- args$tag
+  saveRDS(dt.sed.analysis.ret, paste0(args$output_table,'.full.RDS'))
 }
 
-if (!is.null(args$output_table)) {
-  fwrite(ll_ret_to_dt_sims(x.em, args), args$output_table, sep='\t')
-  x.em$args <- args
-  saveRDS(x.em, paste0(args$output_table,'.RDS'))
-}
 

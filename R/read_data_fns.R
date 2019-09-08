@@ -166,7 +166,7 @@ add_rg <- function(dt.sed, rg_props) {
 
 read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt', 'c_gt', 'a_gt', 'd_gt'),
                                    keep.libs = NULL, sample_mh_from_freq = T, include_ti = F, merge_libs = F, 
-                                   site.cats = 'all', n_qc0 = 0, n_qc1 = 0, downsample = 0, rg_props = 0) {
+                                   site.cats = 'all', n_qc0 = 0, n_qc1 = 0, downsample = 0, rg_props = 1) {
   cat('Reading genotypes..', gts_file, '\n')
   dt.sed.og <- fread(gts_file)
   cat('  Read:', dt.sed.og[, .N], 'sites\n')
