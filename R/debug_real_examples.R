@@ -140,8 +140,58 @@ ggplot(merge(ret.swede.10pct$em$c$dt.theta, ret.swede.10pct$real.theta, suffixes
   geom_abline(slope=1)
 
 
+
+contam.split.iters <- list()
+for (c.iter in sprintf("contam_iter_%d", 1:100)) {
+  pct_swede <- .1
+  dt.sed.analysis.tmp <- dt.sed.analysis.archaics[lib == 'Mez1_R5661']
+  dt.sed.analysis.tmp[, rg := paste0(rg, '___', 1:2)]
+  dt.sed.analysis.tmp[, is.archaic := T]
+  dt.sed.analysis.tmp[, .N, rg]
+  dt.sed.analysis.tmp.swede <- dt.sed.analysis.archaics.swede[sample(.N, dt.sed.analysis.tmp[, .N*pct_swede])]
+  # dt.sed.analysis.tmp.swede.rg <- 
+  n.sam <- dt.sed.analysis.tmp.swede[deam53 == T, .N]
+  dt.sed.analysis.tmp.swede[deam53 == T]$rg <- dt.sed.analysis.tmp[deam53 == T, sample(unique(rg), n.sam, prob = c(.2,.8), replace = T)]
+  n.sam <- dt.sed.analysis.tmp.swede[deam53 == F, .N]
+  dt.sed.analysis.tmp.swede[deam53 == F]$rg <- dt.sed.analysis.tmp[deam53 == F, sample(unique(rg), n.sam, prob = c(.2,.8), replace = T)]
+  dt.sed.analysis.tmp.swede[, is.archaic := F]
+  dt.sed.analysis.tmp <- rbind(dt.sed.analysis.tmp, dt.sed.analysis.tmp.swede)
+  dt.sed.analysis.tmp[, .(mh_contam = sum(!is.archaic)/.N, .N), rg]
+  
+  ret.swede.10pct_split_iter <- run_simple_analysis(dt.sed.analysis.tmp, sims.dat.archaics, max.iter = 30, nbootstraps = 10)
+  ret.swede.10pct_split_iter$em.theta
+  ret.swede.10pct_split_iter$real.theta <- dt.sed.analysis.tmp[, .(mh_contam = sum(!is.archaic)/.N, .N), rg]
+  contam.split.iters[[c.iter]] <- ret.swede.10pct_split_iter
+}
+
+# names(contam.split.iters)
+# c.iter <- names(contam.split.iters)[1]
+# contam.split.iters[[c.iter]]
+contam.split.iters.theta = foreach (c.iter = names(contam.split.iters), .combine=rbind) %do% {
+  dt = merge(contam.split.iters[[c.iter]]$em$max$dt.theta, contam.split.iters[[c.iter]]$real.theta, by='rg', suffixes = c('.em', '.real'))
+  dt[rg == 'Mez1_R5661_rg_1_FALSE___1', mh_contam.real := mh_contam.real + 0.02933404] ## this just roughly corrects for mh contam in the real mez1 library
+  dt[rg == 'Mez1_R5661_rg_1_FALSE___2', mh_contam.real := mh_contam.real + 0.03207317] ## this just roughly corrects for mh contam in the real mez1 library
+  dt[, c.iter := c.iter]
+}
+ggplot(contam.split.iters.theta, aes(x=mh_contam.real, y=mh_contam.em, color=rg)) + geom_point(alpha=.3) + geom_abline(slope=1) +
+  ggtitle('Mez1 adding MH contamination [swede] in four read groups')
+# ggsave('figures/mez1_contam_from_swede.max.pdf')
+ggplot(contam.split.iters.theta, aes(y=faunal_prop, x=mh_contam.real, color=rg)) + geom_boxplot() +
+  ggtitle('Mez1 adding MH contamination [swede] in four read groups')
+# ggsave('figures/mez1_contam_from_swede.faunal.pdf')
+
+
+############
+## plot low cov neand results
+ret.goyet.archaics$em$c$man.max.ll
+ret.goyet.archaics$em$anc_1$man.max.ll
+ret.goyet.archaics$em$v$man.max.ll
+ret.goyet.archaics$em$max$man.max.ll
+
+
+
 ############3
-## debug strange results with vindija only_v
+## debug strange results with vindija only_v <----- actually this was the difference between q-lik and man-lik
 
 # ret.vind.only_v <- run_simple_analysis(dt.sed.analysis.only_v.lateN[lib == 'Vindija_G1_A9348'],
 #                                        sims.dat.only_v, max.iter = 30, nbootstraps = 10)

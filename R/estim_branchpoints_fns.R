@@ -898,7 +898,8 @@ sed_EM_allbranch <- function(dt.sed.analysis, sims.dat, branches = NULL, ...) {
     ## i.e., the manual ll may be highest for 'v', and the q-ll highest for anc_1.  I think this is because
     ## the q-ll "remembers" the path it took to get there [in the form of gamma], and so it's not comparable
     ## across branches. I'm not 100% on this, though.
-    if (ret[[my.branch]]$man.max.ll > man.max.ll) ret$max <- ret[[my.branch]]
+    if (ret[[my.branch]]$man.max.ll > max.ll) ret$max <- ret[[my.branch]]
+    max.ll <- ret[[my.branch]]$man.max.ll
   }
   ret
 }
