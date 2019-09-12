@@ -18,32 +18,34 @@ print_tables = F
 
 
 
-#######
-## make a new function that gives you a 'simple' p_der, with a linear change between the estimated endpoints on a branch
+# #######
+# ## make a new function that gives you a 'simple' p_der, with a linear change between the estimated endpoints on a branch
+# 
+# ## this really needs to be rewritten, because it should also re-compute the data from a simulation table?
+# 
+# add_linear_p_given_b_t_arcs <- function(sims.dat, fixed_anc_p = 0.01, fixed_der_p = .99) {
+#   sims.dat$dt.simple_p_given_b_t_arcs <- data.table(expand.grid(v_gt=0:2,c_gt=0:2,a_gt=0:2,d_gt=0:2,branch=sims.dat$branches))
+#   sims.dat$dt.simple_p_given_b_t_arcs <- merge(sims.dat$dt.simple_p_given_b_t_arcs, sims.dat$branch.bounds, by='branch')
+#   sims.dat$dt.simple_p_given_b_t_arcs[, p.low := sims.dat$p_gt_given_b_t_arcs(branch, t.low, gt.category, sims.dat),
+#                                       keyby=.(v_gt,c_gt,a_gt,d_gt,branch)]
+#   sims.dat$dt.simple_p_given_b_t_arcs[, p.high := sims.dat$p_gt_given_b_t_arcs(branch, t.high, gt.category, sims.dat),
+#                                       keyby=.(v_gt,c_gt,a_gt,d_gt,branch)]
+#   setkey(sims.dat$dt.simple_p_given_b_t_arcs, v_gt,c_gt,a_gt,d_gt)
+# 
+#   ## sites where all archaics are fixed aren't a good match for the simulations
+#   ## both because they can be 'QC' sites, and thus
+#   sims.dat$dt.simple_p_given_b_t_arcs[.(0,0,0,0), p.low := fixed_anc_p]
+#   sims.dat$dt.simple_p_given_b_t_arcs[.(0,0,0,0), p.high := fixed_anc_p]
+#   sims.dat$dt.simple_p_given_b_t_arcs[.(2,2,2,2), p.low := fixed_der_p]
+#   sims.dat$dt.simple_p_given_b_t_arcs[.(2,2,2,2), p.high := fixed_der_p]
+# 
+#   sims.dat$simple_p_given_b_t_arcs <- function(my.b, my.t, my.gt, sims.dat) {
+#     sims.dat$dt.simple_p_given_b_t_arcs[my.gt][my.b == branch][, p.low + (my.t-t.low)/(t.high-t.low) * (p.high-p.low)]
+#   }
+#   sims.dat
+# }
 
-## this really needs to be rewritten, because it should also re-compute the data from a simulation table?
 
-add_linear_p_given_b_t_arcs <- function(sims.dat, fixed_anc_p = 0.01, fixed_der_p = .99) {
-  sims.dat$dt.simple_p_given_b_t_arcs <- data.table(expand.grid(v_gt=0:2,c_gt=0:2,a_gt=0:2,d_gt=0:2,branch=sims.dat$branches))
-  sims.dat$dt.simple_p_given_b_t_arcs <- merge(sims.dat$dt.simple_p_given_b_t_arcs, sims.dat$branch.bounds, by='branch')
-  sims.dat$dt.simple_p_given_b_t_arcs[, p.low := sims.dat$p_gt_given_b_t_arcs(branch, t.low, gt.category, sims.dat),
-                                      keyby=.(v_gt,c_gt,a_gt,d_gt,branch)]
-  sims.dat$dt.simple_p_given_b_t_arcs[, p.high := sims.dat$p_gt_given_b_t_arcs(branch, t.high, gt.category, sims.dat),
-                                      keyby=.(v_gt,c_gt,a_gt,d_gt,branch)]
-  setkey(sims.dat$dt.simple_p_given_b_t_arcs, v_gt,c_gt,a_gt,d_gt)
-
-  ## sites where all archaics are fixed aren't a good match for the simulations
-  ## both because they can be 'QC' sites, and thus
-  sims.dat$dt.simple_p_given_b_t_arcs[.(0,0,0,0), p.low := fixed_anc_p]
-  sims.dat$dt.simple_p_given_b_t_arcs[.(0,0,0,0), p.high := fixed_anc_p]
-  sims.dat$dt.simple_p_given_b_t_arcs[.(2,2,2,2), p.low := fixed_der_p]
-  sims.dat$dt.simple_p_given_b_t_arcs[.(2,2,2,2), p.high := fixed_der_p]
-
-  sims.dat$simple_p_given_b_t_arcs <- function(my.b, my.t, my.gt, sims.dat) {
-    sims.dat$dt.simple_p_given_b_t_arcs[my.gt][my.b == branch][, p.low + (my.t-t.low)/(t.high-t.low) * (p.high-p.low)]
-  }
-  sims.dat
-}
 # add_linear_p_given_b_t_arcs_even_for_fixed <- function(sims.dat) {
 #   sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed <- data.table(expand.grid(v_gt=0:2,c_gt=0:2,a_gt=0:2,d_gt=0:2,branch=sims.dat$branches))
 #   sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed <- merge(sims.dat$dt.simple_p_given_b_t_arcs_even_for_fixed, sims.dat$branch.bounds, by='branch')
@@ -182,8 +184,9 @@ p_h_given_b_t <- function(dt.sed, sims.dat, gt, branch, branch_time, method) {
   ##################
   # dt.p[v_gt == 2 & c_gt == 2 & a_gt == 2 & d_gt == 2, p := .999]
   # dt.p[v_gt == 0 & c_gt == 0 & a_gt == 0 & d_gt == 0, p := .004]
-  dt.p['2222', p := .999]
-  dt.p['0000', p := .004]
+  ## ISSUE - I JUST COMMENTED THESE OUT, AFTER RUNNING (AND SAVING) SOME DATA USING JUST NEAND POLYMORPHISMS
+  # dt.p['2222', p := .999]
+  # dt.p['0000', p := .004]
   ## at this point, p is p(H==der).  We want p(H==gt).  Flip if necessary.
   if (gt == 0) dt.p[, p := 1-p]
   ## unlike merge, plyr::join maintains the order of dt.sed
@@ -365,8 +368,9 @@ calc_manual_lik <- function(dt.sed, all.rg, sims.dat, dt.theta, err_rate, my.bra
     faunal_prop = dt.theta[rg == my.rg, faunal_prop]
     dt.sed.rg <- dt.sed[rg == my.rg]
     
+    #### ISSUE
     #### should change calc_gamma_num to return a dt w/ g0 and g1 in it, to reduce time of calculation
-    #### would cut the grid search time by half (not that I really use that so much)
+    #### would cut running time [for calc_manual_lik] in half
     g0 <- calc_gamma_num(dt.sed.rg,
                          gt=0,
                          mh_contam = mh_contam,
@@ -630,6 +634,7 @@ if (F) {
 sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, max.iter = 20, ll.converge = 0, 
                    set.branchtime = 'estim', set.mh_contam = 'estim', set.faunal_prop = 'estim', p_h_method = 'full',
                    fail_on_neg_change = F, fail_on_neg_change_q = F) {
+
 
   # hey  
   ## save data to return
@@ -922,14 +927,17 @@ sed_EM_allbranch <- function(dt.sed.analysis, sims.dat, branches = NULL, ...) {
 ## this just runs some analyses that approach what we would want to do with each sample
 
 
-run_simple_analysis <- function(dt.sed.analysis, sims.dat, branches = c('c','v','anc_1'), blocks = 10, nbootstraps = 0, max.iter = 30) {
+run_simple_analysis <- function(dt.sed.analysis, sims.dat, branches = c('c','v','anc_1'), 
+                                blocks = 10, nbootstraps = 0, max.iter = 30,
+                                set.faunal_prop = 'estim',
+                                set.mh_contam = 'estim') {
   dt.sed.analysis.em <- sed_EM_allbranch(dt.sed.analysis,
                                          sims.dat, 
                                          branches = branches,
                                          err_rate = 0.001,
                                          max.iter = max.iter, ll.converge = 1e-6,
-                                         set.faunal_prop = 'estim',
-                                         set.mh_contam = 'estim',
+                                         set.faunal_prop = set.faunal_prop,
+                                         set.mh_contam = set.mh_contam,
                                          p_h_method = 'simple')
   
   dt.sed.analysis.em.theta <- merge(dt.sed.analysis[, .N, rg], dt.sed.analysis.em$max$dt.theta)
@@ -954,11 +962,13 @@ run_simple_analysis <- function(dt.sed.analysis, sims.dat, branches = c('c','v',
   if (nbootstraps > 0) {
     dt.sed.analysis.gridll.bootstraps <- foreach(iter = 1:nbootstraps, .combine = rbind) %do% {
       cat('\n\nBootstrap', iter, '\n')
-      sed_grid_search(bootstrap_gt_data(dt.sed.analysis, blocks),
-                      sims.dat, my.branch = branches,
-                      err_rate = 0.001, p_h_method = 'simple', nsteps = 2,
-                      range.mh_contam = dt.sed.analysis.em.theta[, sum(mh_contam * N / sum(N))],
-                      range.faunal_prop = dt.sed.analysis.em.theta[, sum(faunal_prop * N / sum(N))])
+      dt = sed_grid_search(bootstrap_gt_data(dt.sed.analysis, blocks),
+                           sims.dat, my.branch = branches,
+                           err_rate = 0.001, p_h_method = 'simple', nsteps = 2,
+                           range.mh_contam = dt.sed.analysis.em.theta[, sum(mh_contam * N / sum(N))],
+                           range.faunal_prop = dt.sed.analysis.em.theta[, sum(faunal_prop * N / sum(N))])
+      dt[, bs.iter := iter]
+      dt
     }
     p1.boots <- ggplot(dt.sed.analysis.gridll, aes(x=my.t, y=ll, color=my.branch)) + geom_line() + 
       geom_point(data=dt.sed.analysis.gridll.bootstraps[is.max == T], 
