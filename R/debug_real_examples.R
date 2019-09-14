@@ -442,6 +442,64 @@ ggsave('figures/mez1__ll_plot.contam.pdf', width=7, height=4)
 
 
 
+
+library(doParallel)
+registerDoParallel(cores=8)
+getDoParWorkers()
+
+
+contam.split.ll <- data.table()
+for (pct_swede in c(.1,.3,.5,.8)) {
+  cat(pct_swede, '\n')
+  dt.sed.analysis.tmp <- dt.sed.analysis.archaics[lib == 'Mez1_R5661']
+  dt.sed.analysis.tmp[, rg := paste0(rg, '___', 1:2)]
+  dt.sed.analysis.tmp[, is.archaic := T]
+  dt.sed.analysis.tmp[, .N, rg]
+  dt.sed.analysis.tmp.swede <- dt.sed.analysis.archaics.swede[sample(.N, dt.sed.analysis.tmp[, .N*pct_swede])]
+  # dt.sed.analysis.tmp.swede.rg <- 
+  n.sam <- dt.sed.analysis.tmp.swede[deam53 == T, .N]
+  dt.sed.analysis.tmp.swede[deam53 == T]$rg <- dt.sed.analysis.tmp[deam53 == T, sample(unique(rg), n.sam, prob = c(.2,.8), replace = T)]
+  n.sam <- dt.sed.analysis.tmp.swede[deam53 == F, .N]
+  dt.sed.analysis.tmp.swede[deam53 == F]$rg <- dt.sed.analysis.tmp[deam53 == F, sample(unique(rg), n.sam, prob = c(.2,.8), replace = T)]
+  dt.sed.analysis.tmp.swede[, is.archaic := F]
+  dt.sed.analysis.tmp <- rbind(dt.sed.analysis.tmp, dt.sed.analysis.tmp.swede)
+  dt.sed.analysis.tmp[, .(mh_contam = sum(!is.archaic)/.N, .N), rg]
+  
+  tmp.ll <- grid_t_em_theta(dt.sed.analysis.tmp,
+                                       sims.dat.archaics,
+                                       # my.branches = c('v'), bins.t = 5,
+                                       my.branches = c('v','anc_1','c'), bins.t = 5,
+                                       max.iter = 2, ll.converge = .01, nsteps = 2, ll.thresh = 10)
+  tmp.ll$real.mh_contam <- dt.sed.analysis.tmp[, sum(!is.archaic)/.N]
+  tmp.ll$real.nsites <- dt.sed.analysis.tmp[, .N]
+  contam.split.ll <- rbind(contam.split.ll, tmp.ll)
+  cat('real:', dt.sed.analysis.tmp[, sum(!is.archaic)/.N], '\n')
+}
+
+dt.sed.analysis.tmp[, rg := 'hey']
+dt.sed.analysis.tmp <- dt.sed.analysis.tmp[sample(.N-1)]
+tmp.ll <- grid_t_em_theta(dt.sed.analysis.tmp,
+                          sims.dat.archaics,
+                          # my.branches = c('v'), bins.t = 5,
+                          my.branches = c('v','anc_1','c'), bins.t = 5,
+                          max.iter = 2, ll.converge = .01, nsteps = 2, ll.thresh = 10)
+tmp.ll$real.mh_contam <- dt.sed.analysis.tmp[, sum(!is.archaic)/.N]
+tmp.ll$real.nsites <- dt.sed.analysis.tmp[, .N]
+contam.split.ll <- rbind(contam.split.ll, tmp.ll, fill=T)
+
+contam.split.ll[, rel.ll := man.max.ll - max.ll]
+## adding more human contam smooths out the ll
+## but also adding more rg's tightens it up (i.e., more granularity in the data)
+ggplot(contam.split.ll[rg != 'hey'], aes(x=branchtime, y=rel.ll, group=interaction(branch,real.mh_contam), color = paste(real.mh_contam)))  + geom_hline(aes(yintercept = max(rel.ll)-10)) + 
+  geom_smooth(se = F)
+
+
+
+
+
+
+
+
 ####
 # # I also tried running w/o the sites that are fixed N and poly archaic, didn't make any difference
 # dt.sed.analysis.mez1.neand.not_poly_arc.em <- sed_EM_allbranch(dt.sed.analysis.neand.not_poly_arc[lib == 'Mez1_R5661'], 

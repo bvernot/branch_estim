@@ -504,7 +504,7 @@ if (F) {
 }
 
 
-sed_grid_search <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, p_h_method = 'full',
+sed_grid_search <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, p_h_method = 'simple',
                             range.mh_contam = c(0,.3), range.faunal_prop = c(0,.2), range.t = NULL,
                             bins.mh_contam = 10, bins.faunal_prop = 5, bins.t = 10,
                             nsteps = 3, print.debug = F) {
@@ -553,7 +553,7 @@ if (F) {
   
 }
 
-sed_grid_search_single_branch <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, p_h_method = 'full',
+sed_grid_search_single_branch <- function(dt.sed.analysis, sims.dat, my.branch, err_rate = 0.001, p_h_method = 'simple',
                             range.mh_contam = c(0,.3), range.faunal_prop = c(0,.2), range.t = NULL,
                             bins.mh_contam = 10, bins.faunal_prop = 5, bins.t = 10,
                             nsteps = 3, print.debug = F) {
@@ -920,6 +920,125 @@ sed_EM_allbranch <- function(dt.sed.analysis, sims.dat, branches = NULL, ...) {
 #   # if (ret$max.ll > max.ll) ret$max <- ret[[my.branch]]
 #   my.ret
 # }
+
+
+
+
+
+
+######## get a true maximum likelihood surface for branchtime, over a semi-random grid
+## the surface w/ ll ~ less than ll.thresh away from the max is explored more extensively with each step (nsteps)
+## returns a data.table
+
+grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate = 0.001, p_h_method = 'simple',
+                            bins.t = 10,
+                            max.iter = 30, ll.converge = 1e-6,
+                            nsteps = 3, print.debug = F, ll.thresh = 4) {
+  
+  ## first get the true max likelihood estimate of theta and t
+  hey.em <- sed_EM_allbranch(dt.sed.analysis, sims.dat,
+                             branches = my.branches,
+                             err_rate = 0.001, set.branchtime = 'estim',
+                             max.iter = max.iter, ll.converge = ll.converge,
+                             set.faunal_prop = 'estim',
+                             set.mh_contam = 'estim',
+                             p_h_method = 'simple')
+  hey.em <- hey.em$max
+  
+  dt.ret <- data.table(hey.em$dt.theta)
+  dt.ret[, branchtime := hey.em$branchtime]
+  dt.ret[, branch := hey.em$branch]
+  dt.ret[, man.max.ll := hey.em$man.max.ll]
+  dt.ret[, man.max.ll.last := tail(hey.em$man.ll.trace,1)]
+  dt.ret[, n.iter := length(hey.em$man.ll.trace)]
+  dt.ret[, my.t.idx := 0]
+  dt.ret[, max.ll := man.max.ll]
+  dt.ret[, step.x := 0]
+  
+  for (step.x in 1:nsteps) {
+    cat(sprintf('\nstep %d/%d\n', step.x, nsteps))
+    
+    x.manll.dt <- foreach (my.b = my.branches, .combine = rbind) %:%
+      foreach(my.t.idx = 1:bins.t, .combine = rbind) %dopar% {
+        
+        if (step.x == 1) {
+          vals.t = sims.dat$branch.bounds[my.b, unique(seq(t.low, t.high, length.out = bins.t)), on='branch']
+        } else {
+          # print()
+          cat(sprintf('\nstep %d; branch %s; idx %d\n', step.x, my.b, my.t.idx))
+          # print()
+          ## sometimes the ll are very slightly different, so uniq doesn't work.  so I take the mean per branchtime, thus guaranteeing that each branchtime is represented only once (but preserving the ll)
+          dt.x.branch = setorder(unique(dt.ret[branch == my.b, .(branchtime, man.max.ll = mean(man.max.ll), max.ll), branchtime]), branchtime)
+          print(dt.x.branch)
+          a = dt.x.branch[, max.ll-man.max.ll < ll.thresh]
+          print(a)
+          if (sum(a) == 0) {
+            print(sprintf('branch has no in-bound points: %s', my.b))
+            return(data.table()) ## there are no points on this branch that are within the bounds
+          }
+          a.new <- a
+          a.new[-1] <- a.new[-1] | a[-length(a)]
+          a.new[-length(a)] <- a.new[-length(a)] | a[-1]
+          a
+          a.new
+          print(a.new)
+          print(dt.x.branch[a.new])
+          # vals.t = dt.x.branch[a.new, unique(seq(min(branchtime), max(branchtime), length.out = bins.t+1))] ## the endpoints are included, but we have already sampled them
+          vals.t = dt.x.branch[a.new, runif(bins.t, min(branchtime), max(branchtime))] ## the endpoints are included, but we have already sampled them
+          print(vals.t)
+          vals.t <- vals.t[!vals.t %in% dt.x.branch$branchtime]
+          print(vals.t)
+        }
+        if (my.t.idx > length(vals.t)) {
+          print(sprintf('idx is larger than length of vals.t: %s, %d > %d', my.b, my.t.idx, length(vals.t)))
+          return(data.table())
+        }
+        
+        my.t = vals.t[my.t.idx]
+        if (print.debug) cat(mh_contam, faunal_prop, my.t, '\n')
+        hey.em <- sed_EM(dt.sed.analysis, sims.dat,
+                         my.branch = my.b,
+                         err_rate = 0.001, set.branchtime = my.t,
+                         max.iter = max.iter, ll.converge = ll.converge,
+                         set.faunal_prop = 'estim',
+                         set.mh_contam = 'estim',
+                         p_h_method = 'simple')
+        
+        dt.tmp <- data.table(hey.em$dt.theta)
+        dt.tmp[, branchtime := hey.em$branchtime]
+        dt.tmp[, branch := hey.em$branch]
+        dt.tmp[, man.max.ll := hey.em$man.max.ll]
+        dt.tmp[, man.max.ll.last := tail(hey.em$man.ll.trace,1)]
+        dt.tmp[, n.iter := length(hey.em$man.ll.trace)]
+        dt.tmp[, my.t.idx := my.t.idx]
+        dt.tmp[, max.ll := NA_real_]
+        dt.tmp[, step.x := step.x]
+        
+      }
+    
+    dt.ret <- rbind(x.manll.dt, dt.ret)
+    dt.ret[, max.ll := max(man.max.ll)]
+  }
+  
+  dt.ret
+}
+
+if (F) {
+  dt.x.new = grid_t_em_theta(dt.sed.analysis.archaics[lib == 'Mez1_R5661'],
+                             sims.dat.archaics,
+                             # my.branches = c('v'), bins.t = 5,
+                             my.branches = c('v','anc_1','c'), bins.t = 5,
+                             max.iter = 30, ll.converge = 1e-6, nsteps = 6, ll.thresh = 10)
+  ggplot(dt.x.new, aes(x=branchtime, y=man.max.ll, color=branch)) + geom_point() + geom_line() + geom_hline(aes(yintercept = max(man.max.ll)-2)) #+ facet_wrap(~step.x)
+  ggplot(dt.x.new, aes(x=branchtime, y=man.max.ll, color=branch)) + geom_point() + geom_line() + geom_hline(aes(yintercept = max(man.max.ll)-10)) + facet_wrap(~step.x)
+}
+
+
+
+
+
+
+
 
 
 

@@ -25,7 +25,7 @@ parser <- ArgumentParser()
 parser$add_argument("-v", "--verbose", action="store_true", default=F,
                     help="Print extra output")
 parser$add_argument("-nc", "--ncores", type='integer', default=1,
-                    help="Number of cores to use. [not currently used?]")
+                    help="Number of cores to use. [only currently used with --ll-surface]")
 
 parser$add_argument("-sims", "--sims.dat", required = T,
                     help="")
@@ -41,6 +41,16 @@ parser$add_argument("-table", "--output-table", required=F,
                     help="Save the results to <output-table> in tsv form.  Also saves an RDS of the em results.")
 parser$add_argument("-debug-gts", "--debug-gts-at-time", required=F, type='double', nargs = '+',
                     help="Given a branch and a branch time, report expected and observed p(der) for each genotype category. Requires --branch also.")
+
+parser$add_argument("-ll-surface", "--ll-surface", action="store_true", default=F,
+                    help="Get a true maximum likelihood surface for branchtime, over a semi-random grid of times. The surface w/ ll ~ less than ll.thresh away from the max is explored more extensively with each step (nsteps)")
+parser$add_argument("-nsteps", "--nsteps", required=F, default=3, type='integer',
+                    help="Number of steps to run the ll-surface search [default 3]")
+parser$add_argument("-nbins", "--nbins", required=F, default=10,
+                    help="Number of bins to split each branch into for ll-surface search [default 10]")
+parser$add_argument("-ll-thresh", "--ll-thresh", required=F, default=5,
+                    help="With --ll-surface, search extensively within ll-thresh of the maximum likelihood [default 5]")
+
 
 parser$add_argument("-branch", "--branch", required=F, default=NULL,
                     help="Only run the EM on a single branch. e.g. --branch v.  Required for --debug-gts-at-time.")
@@ -64,7 +74,10 @@ parser$add_argument("-tag", "--tag", required=F, default='none',
                     help="One (or more, in the future) tags for this analysis.")
 
 parser$add_argument("-niter", "--num-iters", type='integer', default=100,
-                    help="Number of EM iterations")
+                    help="Maximum number of EM iterations")
+parser$add_argument("-ll-converge", "--ll-converge", required=F, default=1e-6,
+                    help="Stop the EM search when the LL changes by less than ll-converge [default 1e-6]")
+
 
 parser$add_argument("-n-qc1", "--n-qc1", type='integer', default=1000,
                     help="Artificially add N QC sites that are DERIVED in all hominins. These are used for calculating faunal proportions, and have to be artificially added to simulated data.")
@@ -106,6 +119,7 @@ if (interactive()) {
   args <- parser$parse_args(strsplit('-gts ~/Downloads/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --debug-gts-at-time 0.7601 --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs sims009.v.0.7601.1 --rg-props .2 .8 --add-contam 0 .1 --downsample 10000 --n-qc1 1000 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 --branch v -niter 10 -table hey.txt', split = ' ')[[1]])
+  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 -niter 2 --ll-surface --nsteps 2 -table hey.txt', split = ' ')[[1]])
   #  Mez2_A9180
   # args <- parser$parse_args(strsplit('--splits ~/Documents/index_cross_contam/data/ludovic/splitstats_ludovic_orlando_001.myformat3.txt -nhits 100 --prefix splitstats_ludovic_orlando_001 -nc 2 --sources 150', split = ' ')[[1]])
 } else {
@@ -135,8 +149,14 @@ if (is.null(args$script_path)) {
   source(paste0(args$script_path, '/read_sims_fns.R'))
 }
 
-# registerDoParallel(cores=args$ncores)
-# getDoParWorkers()
+if (args$ncores > 1) {
+  cat(sprintf('Registering %d cores\n', args$ncores))
+  library(doParallel)
+  registerDoParallel(cores=args$ncores)
+  getDoParWorkers()
+} else {
+  cat('Running in single-core mode.\n')
+}
 
 
 # # sims.dat <- readRDS('~/Google Drive/branch_point_esimates/sims.dat.RDS')
@@ -280,6 +300,23 @@ if (!is.null(args$debug_gts_at_time)) {
 
 
 
+if (args$ll_surface) {
+  cat('Computing LL surface for branchtime\n')
+  if (is.null(args$output_table)) {
+    cat('--ll-surface option requires --output-table\n')
+    if(!interactive()) q()
+  }
+  dt.x.new = grid_t_em_theta(dt.sed.analysis,
+                             sims.dat,
+                             my.branches = c('v','anc_1','c'), bins.t = args$nbins,
+                             max.iter = args$num_iters, ll.converge = args$ll_converge, 
+                             nsteps = args$nsteps, ll.thresh = args$ll_thresh)
+  dt.x.new[, tag := args$tag]
+  fwrite(dt.x.new, args$output_table, sep='\t')
+  if(!interactive()) q()
+}
+
+
 
 
 
@@ -288,8 +325,9 @@ if (!is.null(args$debug_gts_at_time)) {
 
 ## ISSUE - not sure that ll.converge works?
 if (!is.null(args$branch)) {
+  cat('Running EM on single branch\n')
   x.em = sed_EM(dt.sed.analysis, sims.dat, my.branch = args$branch, err_rate = 0.001,
-                max.iter = args$num_iters, ll.converge = 1e-10,
+                max.iter = args$num_iters, ll.converge = args$ll_converge,
                 set.faunal_prop = args$set_faunal_prop,
                 set.mh_contam = args$set_mh_contam,
                 p_h_method = args$sim_method)
@@ -299,6 +337,7 @@ if (!is.null(args$branch)) {
     saveRDS(x.em, paste0(args$output_table,'.RDS'))
   }
 } else {
+  cat('Running EM on multiple branches, with simple grid after\n')
   dt.sed.analysis.ret <- run_simple_analysis(dt.sed.analysis, sims.dat, branches = c('c','v','anc_1', 'a', 'd', 'anc_2'), blocks = 10, nbootstraps = 10, max.iter = 40)
   dt.sed.analysis.ret$tag <- args$tag
   saveRDS(dt.sed.analysis.ret, paste0(args$output_table,'.full.RDS'))
