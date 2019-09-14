@@ -81,7 +81,7 @@ parser$add_argument("-ll-converge", "--ll-converge", required=F, default=1e-6,
                     help="Stop the EM search when the LL changes by less than ll-converge [default 1e-6]")
 
 
-parser$add_argument("-n-qc1", "--n-qc1", type='integer', default=1000,
+parser$add_argument("-n-qc1", "--n-qc1", type='integer', default=0,
                     help="Artificially add N QC sites that are DERIVED in all hominins. These are used for calculating faunal proportions, and have to be artificially added to simulated data.")
 parser$add_argument("-n-qc0", "--n-qc0", type='integer', default=0,
                     help="Artificially add N QC sites that are ANCESTRAL in all hominins. These are not present/useful in real data, so this should mostly be used for debugging.")
