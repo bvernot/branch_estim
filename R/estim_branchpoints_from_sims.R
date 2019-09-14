@@ -70,7 +70,7 @@ parser$add_argument("-sample-mh", "--sample-mh-from-freqs", default=F, action='s
 parser$add_argument("-f-mh", "--f-mh", default='f_mh',
                     help="Use this column ID for modern human allele frquencies.  Default is f_mh")
 
-parser$add_argument("-tag-labels", "--tag-labels", required=F, default='none', nargs='+',
+parser$add_argument("-tag-labels", "--tag-labels", required=F, default='tag', nargs='+',
                     help="One (or more) tag labels for this analysis.")
 parser$add_argument("-tags", "--tags", required=F, default='none', nargs='+',
                     help="One (or more) tags for this analysis.")
