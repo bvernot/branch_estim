@@ -962,8 +962,10 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate = 0
       foreach(my.t.idx = 1:bins.t, .combine = rbind) %dopar% {
         
         if (step.x == 1) {
+          ## on the first iteration, do a grid over the entire tree
           vals.t = sims.dat$branch.bounds[my.b, unique(seq(t.low, t.high, length.out = bins.t)), on='branch']
         } else {
+          ## on additional iterations, only search within ll.thresh of the maximum
           # print()
           cat(sprintf('\nstep %d; branch %s; idx %d\n', step.x, my.b, my.t.idx))
           # print()
