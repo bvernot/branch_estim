@@ -458,25 +458,6 @@ if (F) {
 }
 
 
-## if blocks > 0, bootstrap over blocks rather than single sites
-## if drop.one > 0, then drop just that block
-bootstrap_gt_data <- function(dt.sed.analysis, blocks = 0, drop.one = 0, shuffle_first = T) {
-  dt <- data.table(dt.sed.analysis[sample(.N)])
-  if (blocks == 0) return(dt[sample(.N,.N,replace=T)])
-
-  block.labels <- sort(rep(1:blocks, length.out=dt[, .N]))
-  dt[, block.label := as.character(block.labels)]
-  setkey(dt, block.label)
-  if (drop.one == 0) {
-    these.blocks = as.character(sample(blocks, blocks, replace = T))
-    dt[these.blocks]
-  } else {
-    dt[!as.character(drop.one)]
-  }
-}
-# bootstrap_gt_data(dt.sed.analysis, 100)[, .N, block.label]
-# bootstrap_gt_data(dt.sed.analysis, 10, 3)[, .N, block.label]
-
 
 
 
@@ -903,8 +884,13 @@ sed_EM_allbranch <- function(dt.sed.analysis, sims.dat, branches = NULL, ...) {
     ## i.e., the manual ll may be highest for 'v', and the q-ll highest for anc_1.  I think this is because
     ## the q-ll "remembers" the path it took to get there [in the form of gamma], and so it's not comparable
     ## across branches. I'm not 100% on this, though.
-    if (ret[[my.branch]]$man.max.ll > max.ll) ret$max <- ret[[my.branch]]
-    max.ll <- ret[[my.branch]]$man.max.ll
+    cat(sprintf('Comparing EM for branch [%s: %g] vs current max [%s: %g | %g]\n', my.branch, ret[[my.branch]]$man.max.ll, 
+                ret$max$branch, ret$max$man.max.ll, max.ll))
+    if (ret[[my.branch]]$man.max.ll > max.ll) {
+      cat(' :: found new max branch:', my.branch, '\n')
+      ret$max <- ret[[my.branch]]
+      max.ll <- ret[[my.branch]]$man.max.ll
+    }
   }
   ret
 }
@@ -943,6 +929,14 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate = 0
                              set.faunal_prop = 'estim',
                              set.mh_contam = 'estim',
                              p_h_method = 'simple')
+  
+  print(hey.em$v$man.max.ll)
+  print(hey.em$c$man.max.ll)
+  print(hey.em$anc_1$man.max.ll)
+  print(hey.em$max$man.max.ll)
+  print(hey.em$max$branch)
+  # exit()
+  # what
   hey.em <- hey.em$max
   
   dt.ret <- data.table(hey.em$dt.theta)
@@ -954,7 +948,9 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate = 0
   dt.ret[, my.t.idx := 0]
   dt.ret[, max.ll := man.max.ll]
   dt.ret[, step.x := 0]
-  
+  print(dt.ret)
+  print(dt.ret)
+
   for (step.x in 1:nsteps) {
     cat(sprintf('\nstep %d/%d\n', step.x, nsteps))
     
@@ -978,11 +974,10 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate = 0
             print(sprintf('branch has no in-bound points: %s', my.b))
             return(data.table()) ## there are no points on this branch that are within the bounds
           }
+          ## convoluted way of expanding the range of grid points to search by one on each side
           a.new <- a
           a.new[-1] <- a.new[-1] | a[-length(a)]
           a.new[-length(a)] <- a.new[-length(a)] | a[-1]
-          a
-          a.new
           print(a.new)
           print(dt.x.branch[a.new])
           # vals.t = dt.x.branch[a.new, unique(seq(min(branchtime), max(branchtime), length.out = bins.t+1))] ## the endpoints are included, but we have already sampled them

@@ -164,9 +164,32 @@ add_rg <- function(dt.sed, rg_props) {
   dt.sed[, rg := paste0(lib, '_rg_', sample(1:length(rg_props), .N, replace = T, prob = rg_props), '_', deam53)]
 }
 
+
+
+## if blocks > 0, bootstrap over blocks rather than single sites
+## if drop.one > 0, then drop just that block
+bootstrap_gt_data <- function(dt.sed.analysis, blocks = 0, drop.one = 0, shuffle_first = T) {
+  dt <- data.table(dt.sed.analysis[sample(.N)])
+  if (blocks == 0) return(dt[sample(.N,.N,replace=T)])
+  
+  block.labels <- sort(rep(1:blocks, length.out=dt[, .N]))
+  dt[, block.label := as.character(block.labels)]
+  setkey(dt, block.label)
+  if (drop.one == 0) {
+    these.blocks = as.character(sample(blocks, blocks, replace = T))
+    dt[these.blocks]
+  } else {
+    dt[!as.character(drop.one)]
+  }
+}
+# bootstrap_gt_data(dt.sed.analysis, 100)[, .N, block.label]
+# bootstrap_gt_data(dt.sed.analysis, 10, 3)[, .N, block.label]
+
+
 read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt', 'c_gt', 'a_gt', 'd_gt'),
                                    keep.libs = NULL, sample_mh_from_freq = T, include_ti = F, merge_libs = F, 
-                                   site.cats = 'all', n_qc0 = 0, n_qc1 = 0, downsample = 0, rg_props = 1) {
+                                   site.cats = 'all', n_qc0 = 0, n_qc1 = 0, downsample = 0, rg_props = 1,
+                                   block_bootstrap = 0) {
   cat('Reading genotypes..', gts_file, '\n')
   dt.sed.og <- fread(gts_file)
   cat('  Read:', dt.sed.og[, .N], 'sites\n')
@@ -186,6 +209,8 @@ read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt
   dt.sed.analysis <- add_sim_qc_sites(dt.sed.analysis, n_qc0 = n_qc0, n_qc1 = n_qc1)
   
   dt.sed.analysis <- downsample_gt_sites(dt.sed.analysis, downsample = downsample)
+  
+  if (block_bootstrap > 1) dt.sed.analysis <- bootstrap_gt_data(dt.sed.analysis, blocks = block_bootstrap)
   
   add_rg(dt.sed.analysis, rg_props = rg_props)
   

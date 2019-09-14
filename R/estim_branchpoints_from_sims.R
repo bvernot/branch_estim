@@ -52,7 +52,7 @@ parser$add_argument("-ll-thresh", "--ll-thresh", required=F, default=5,
                     help="With --ll-surface, search extensively within ll-thresh of the maximum likelihood [default 5]")
 
 
-parser$add_argument("-branch", "--branch", required=F, default=NULL,
+parser$add_argument("-branches", "--branches", required=F, default=c('c', 'v', 'anc_1', 'a', 'anc_2', 'd', 'anc_3'), nargs='+',
                     help="Only run the EM on a single branch. e.g. --branch v.  Required for --debug-gts-at-time.")
 
 parser$add_argument("-true-branch", "--true-branch", required=F, default='NA',
@@ -70,10 +70,12 @@ parser$add_argument("-sample-mh", "--sample-mh-from-freqs", default=F, action='s
 parser$add_argument("-f-mh", "--f-mh", default='f_mh',
                     help="Use this column ID for modern human allele frquencies.  Default is f_mh")
 
-parser$add_argument("-tag", "--tag", required=F, default='none',
-                    help="One (or more, in the future) tags for this analysis.")
+parser$add_argument("-tag-labels", "--tag-labels", required=F, default='none', nargs='+',
+                    help="One (or more) tag labels for this analysis.")
+parser$add_argument("-tags", "--tags", required=F, default='none', nargs='+',
+                    help="One (or more) tags for this analysis.")
 
-parser$add_argument("-niter", "--num-iters", type='integer', default=100,
+parser$add_argument("-num-em-iters", "--num-em-iters", type='integer', default=100,
                     help="Maximum number of EM iterations")
 parser$add_argument("-ll-converge", "--ll-converge", required=F, default=1e-6,
                     help="Stop the EM search when the LL changes by less than ll-converge [default 1e-6]")
@@ -86,6 +88,8 @@ parser$add_argument("-n-qc0", "--n-qc0", type='integer', default=0,
 
 parser$add_argument("-downsample", "--downsample", type='integer', default=0,
                     help="Downsample data to N reads. This samples the entire dataset, so e.g. if originally each read group was 25% of the data, these proportions may change.")
+parser$add_argument("-block-bootstrap", "--block-bootstrap", type='integer', default=0,
+                    help="Split data randomly into N blocks (does not currently use location information), and then resample from these blocks.")
 
 parser$add_argument("-add-contam", "--add-contam", type='double', default=0, nargs='+',
                     help="Artificially add contamination in these proportions")
@@ -117,15 +121,17 @@ if (interactive()) {
   args <- parser$parse_args(strsplit('-gts ~/Downloads/all_simple_gts.small.tsv.gz --sims ~/Downloads/sims.dat.RDS -libs A20281 --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/hey.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/Downloads/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/Downloads/sims.dat.RDS --prefix what -nc 2 -sites all -tag hey', split = ' ')[[1]])
-  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --debug-gts-at-time 0.7601 --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs sims009.v.0.7601.1 --rg-props .2 .8 --add-contam 0 .1 --downsample 10000 --n-qc1 1000 --branch v -niter 5 -table hey.txt', split = ' ')[[1]])
-  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 --branch v -niter 10 -table hey.txt', split = ' ')[[1]])
-  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 -niter 2 --ll-surface --nsteps 2 -table hey.txt', split = ' ')[[1]])
+  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --debug-gts-at-time 0.7601 --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs sims009.v.0.7601.1 --rg-props .2 .8 --add-contam 0 .1 --downsample 10000 --n-qc1 1000 --branch v --num-em-iters 5 -table hey.txt', split = ' ')[[1]])
+  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 --branch v --num-em-iters 10 -table hey.txt', split = ' ')[[1]])
+  args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tag hey --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 --num-em-iters 2 --ll-surface --nsteps 2 -table hey.txt', split = ' ')[[1]])
   #  Mez2_A9180
   # args <- parser$parse_args(strsplit('--splits ~/Documents/index_cross_contam/data/ludovic/splitstats_ludovic_orlando_001.myformat3.txt -nhits 100 --prefix splitstats_ludovic_orlando_001 -nc 2 --sources 150', split = ' ')[[1]])
 } else {
   args <- parser$parse_args()
 }
 
+print('Arguments:')
+print(args)
 
 if (length(args$add_contam) == 1) args$add_contam <- rep(args$add_contam, length(args$rg_props))
 if (length(args$add_faunal) == 1) args$add_faunal <- rep(args$add_faunal, length(args$rg_props))
@@ -135,6 +141,13 @@ if ( length(args$rg_props) != length(args$add_contam) || length(args$rg_props) !
   cat('RG:', args$rg_props, '\n')
   cat('contam:', args$add_contam, '\n')
   cat('faunal:', args$add_faunal, '\n')
+  q(save='no', status=1)
+}
+
+if ( length(args$tags) != length(args$tag_labels) ) {
+  cat('Tag labels and tags must be same length:\n')
+  cat('tags:', args$tags, '\n')
+  cat('tag-labels:', args$tag_labels, '\n')
   q(save='no', status=1)
 }
 
@@ -171,11 +184,12 @@ sims.dat <- generate_sims_dat(args$sims.dat)
 
 dt.sed.analysis <- read_and_process_genos(args$simple_gts, f_mh.col = args$f_mh, agCols = args$aggregate_gt_columns,
                                           keep.libs = args$libs, sample_mh_from_freq = args$sample_mh_from_freqs,
-                                          include_ti = args$include_ti, merge_libs = args$merge_libs, 
+                                          include_ti = args$include_ti, merge_libs = args$merge_libs,
                                           site.cats = args$site_cat,
-                                          n_qc0 = args$n_qc0, 
+                                          n_qc0 = args$n_qc0,
                                           n_qc1 = args$n_qc1,
-                                          downsample = args$downsample, rg_props = args$rg_props)
+                                          downsample = args$downsample, rg_props = args$rg_props,
+                                          block_bootstrap = args$block_bootstrap)
 
 
 
@@ -213,16 +227,20 @@ setkey(dt.sed.analysis, v_gt, c_gt, a_gt, d_gt)
 if (!is.null(args$debug_gts_at_time)) {
   
   # args$debug_gts_at_time <- c(.56, .65, .75, .85)
+  if (length(args$branches) != 1) {
+    cat('debug gts requires a single branch\n', args$branches)
+    if(!interactive()) q()
+  }
   
-  all.gt <- sims.dat$dt.simple_p_given_b_t_arcs[branch == args$branch]
+  all.gt <- sims.dat$dt.simple_p_given_b_t_arcs[branch == args$branches]
   debug.gts <- foreach(this.t = args$debug_gts_at_time, .combine = rbind) %:%
     foreach (gt.idx = 1:nrow(all.gt), .combine = rbind) %:% 
       foreach (this.rg = all_rg, .combine = rbind) %do% {
         
         this.gt <- all.gt[gt.idx, .(v_gt, c_gt, a_gt, d_gt)]
-        this.p.bounds <- sims.dat$dt.simple_p_given_b_t_arcs[this.gt][branch == args$branch]
+        this.p.bounds <- sims.dat$dt.simple_p_given_b_t_arcs[this.gt][branch == args$branches]
         
-        p.der.exp <- sims.dat$simple_p_given_b_t_arcs(args$branch, this.t, 
+        p.der.exp <- sims.dat$simple_p_given_b_t_arcs(args$branches, this.t, 
                                                       my.gt = this.gt, 
                                                       sims.dat = sims.dat)
         if (dt.sed.analysis[rg == this.rg][this.gt, .N] <= 1) return(data.table())
@@ -280,7 +298,7 @@ if (!is.null(args$debug_gts_at_time)) {
     scale_y_log10() + facet_wrap(~this.rg)
   
   # x.em = sed_EM(dt.sed.analysis[rg %like% 'Mez1' & !gt.cat %like% '^222' & !gt.cat %like% '^222'], 
-  #               sims.dat, my.branch = args$branch, err_rate = 0.001,
+  #               sims.dat, my.branch = args$branches, err_rate = 0.001,
   #               max.iter = 30, ll.converge = 1e-10,
   #               set.faunal_prop = args$set_faunal_prop,
   #               set.mh_contam = args$set_mh_contam,
@@ -308,10 +326,12 @@ if (args$ll_surface) {
   }
   dt.x.new = grid_t_em_theta(dt.sed.analysis,
                              sims.dat,
-                             my.branches = c('v','anc_1','c'), bins.t = args$nbins,
-                             max.iter = args$num_iters, ll.converge = args$ll_converge, 
+                             my.branches = args$branches, bins.t = args$nbins,
+                             max.iter = args$num_em_iters, ll.converge = args$ll_converge, 
                              nsteps = args$nsteps, ll.thresh = args$ll_thresh)
-  dt.x.new[, tag := args$tag]
+  for (i in 1:length(args$tags)) {
+    dt.x.new[, (args$tag_labels[i]) := args$tags[i]]
+  }
   fwrite(dt.x.new, args$output_table, sep='\t')
   if(!interactive()) q()
 }
@@ -324,10 +344,10 @@ if (args$ll_surface) {
 ## run the EM
 
 ## ISSUE - not sure that ll.converge works?
-if (!is.null(args$branch)) {
+if (length(args$branches) == 1) {
   cat('Running EM on single branch\n')
-  x.em = sed_EM(dt.sed.analysis, sims.dat, my.branch = args$branch, err_rate = 0.001,
-                max.iter = args$num_iters, ll.converge = args$ll_converge,
+  x.em = sed_EM(dt.sed.analysis, sims.dat, my.branch = args$branches, err_rate = 0.001,
+                max.iter = args$num_em_iters, ll.converge = args$ll_converge,
                 set.faunal_prop = args$set_faunal_prop,
                 set.mh_contam = args$set_mh_contam,
                 p_h_method = args$sim_method)
@@ -338,7 +358,7 @@ if (!is.null(args$branch)) {
   }
 } else {
   cat('Running EM on multiple branches, with simple grid after\n')
-  dt.sed.analysis.ret <- run_simple_analysis(dt.sed.analysis, sims.dat, branches = c('c','v','anc_1', 'a', 'd', 'anc_2'), blocks = 10, nbootstraps = 10, max.iter = 40)
+  dt.sed.analysis.ret <- run_simple_analysis(dt.sed.analysis, sims.dat, branches = args$branches, blocks = 10, nbootstraps = 10, max.iter = 40)
   dt.sed.analysis.ret$tag <- args$tag
   saveRDS(dt.sed.analysis.ret, paste0(args$output_table,'.full.RDS'))
 }
