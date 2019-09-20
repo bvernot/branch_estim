@@ -939,7 +939,8 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate = 0
   # what
   hey.em <- hey.em$max
   
-  dt.ret <- data.table(hey.em$dt.theta)
+  # dt.ret <- data.table(hey.em$dt.theta)
+  dt.ret <- merge(hey.em$dt.theta, dt.sed.analysis[, .(nsnps = .N), rg], by='rg')
   dt.ret[, branchtime := hey.em$branchtime]
   dt.ret[, branch := hey.em$branch]
   dt.ret[, man.max.ll := hey.em$man.max.ll]
@@ -1001,7 +1002,8 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate = 0
                          set.mh_contam = 'estim',
                          p_h_method = 'simple')
         
-        dt.tmp <- data.table(hey.em$dt.theta)
+        # dt.tmp <- data.table(hey.em$dt.theta)
+        dt.tmp <- merge(hey.em$dt.theta, dt.sed.analysis[, .(nsnps = .N), rg], by='rg')
         dt.tmp[, branchtime := hey.em$branchtime]
         dt.tmp[, branch := hey.em$branch]
         dt.tmp[, man.max.ll := hey.em$man.max.ll]
