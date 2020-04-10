@@ -10,6 +10,11 @@ if (interactive()) {
   options(error = dump_and_quit, width=200)
 }
 
+
+c.args <- commandArgs()
+cat('Command:\n\n', c.args, '\n\n', sep = " ")
+
+
 # install.packages('R.utils')
 # install.packages('argparse')
 library(argparse)
@@ -34,6 +39,10 @@ parser$add_argument("-gts", "--simple-gts", required=T,
 
 parser$add_argument("-libs", "--libs", required=F, nargs = '+',
                     help="One or more libraries to group together. The EM still treats them as separate read groups.  To treat these as a single read group, use --merge-libs.")
+parser$add_argument("-libs-downsample", "--libs-downsample", required=F, nargs = '+', type='integer',
+                    help="Sample N reads from each of the libraries in --libs. Requires --libs. Sampling is performed after reads are filtered e.g. to be polymorphic, ti/tv, etc. If N is larger than the number of reads in the libary, an error is given.")
+parser$add_argument("-libs-add-deam", "--libs-add-deam", required=F, nargs = '+', type='double',
+                    help="Randomly mark as deaminated x% of non-deaminated reads from each of the libraries in --libs. Requires --libs. Modification is performed after reads are filtered e.g. to be polymorphic, ti/tv, etc.")
 parser$add_argument("-merge-libs", "--merge-libs", action="store_true", default=F,
                     help="Merge all requested libraries into a single read group (or entire file, if --libs not given).")
 
@@ -183,7 +192,8 @@ sims.dat <- generate_sims_dat(args$sims.dat)
 ## read genotypes
 
 dt.sed.analysis <- read_and_process_genos(args$simple_gts, f_mh.col = args$f_mh, agCols = args$aggregate_gt_columns,
-                                          keep.libs = args$libs, sample_mh_from_freq = args$sample_mh_from_freqs,
+                                          keep.libs = args$libs, keep.libs.downsample = args$libs_downsample, keep.libs.add_deam = args$libs_add_deam,
+                                          sample_mh_from_freq = args$sample_mh_from_freqs,
                                           include_ti = args$include_ti, merge_libs = args$merge_libs,
                                           site.cats = args$site_cat,
                                           n_qc0 = args$n_qc0,

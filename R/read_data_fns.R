@@ -43,8 +43,10 @@ check_and_add_required_cols <- function(dt.sed.og, f_mh.col, agCols, sample_mh_f
 }
 
 
-basic_filtering_gts <- function(dt.sed, keep.libs, sample_mh_from_freq, include_ti, merge_libs) {
-  
+basic_filtering_gts <- function(dt.sed, keep.libs, keep.libs.downsample, keep.libs.add_deam, sample_mh_from_freq, include_ti, merge_libs) {
+
+    dt.sed.prefilter_counts <- dt.sed[, .(N.prefilter = .N), keyby=lib]
+    
   cat('Filtering rows with NA in required columns:', sum(!complete.cases(dt.sed)), '/', dt.sed[, .N], '\n')
   dt.sed <- dt.sed[complete.cases(dt.sed)]
   
@@ -55,14 +57,66 @@ basic_filtering_gts <- function(dt.sed, keep.libs, sample_mh_from_freq, include_
     cat('Keeping transversions! Should implement strand filtering!\n')
   }
 
+    dt.sed.postfilter_counts <- dt.sed[, .(N.postfilter = .N), keyby=lib]
+
+    cat('Read counts pre and post filter:\n')
+    print(merge(dt.sed.prefilter_counts, dt.sed.postfilter_counts))
+
   if (!is.null(keep.libs)) {
     if (sum(!keep.libs %in% dt.sed[, unique(lib)]) > 0) {
       cat('Requested library is not in dataset:', keep.libs[!keep.libs %in% dt.sed[, unique(lib)]], '\n')
       q(save='no', status=1)
     }
-    cat('Filtering requested libraries: ', keep.libs, '\n')
+    cat('Restricting to requested libraries: ', keep.libs, '\n')
     dt.sed <- dt.sed[lib %in% keep.libs]
+
+    if (!is.null(keep.libs.downsample)) {
+        cat('Downsampling requested libraries: ', keep.libs, '\n')
+        cat('To proportions/counts: ', keep.libs.downsample, '\n')
+
+        ## check that downsample counts are less than .N
+        libs.counts <- sapply(keep.libs, function(x) dt.sed[lib == x, .N])
+        cat('Pre-filter lib counts:', libs.counts, '\n')
+        if (sum(libs.counts < keep.libs.downsample) > 0) {
+            cat('Requested lib downsample numbers are larger than number of reads in lib:', keep.libs[libs.counts < keep.libs.downsample], '\n')
+            cat(' - requested:', keep.libs.downsample[libs.counts < keep.libs.downsample], '\n')
+            cat(' - actual:', libs.counts[libs.counts < keep.libs.downsample], '\n')
+            q(save='no', status=1)
+        }
+
+        dt.sed <- foreach (my.idx = 1:length(keep.libs), .combine = rbind) %do% {
+            my.lib <- keep.libs[my.idx]
+            dt.tmp <- dt.sed[lib == my.lib]
+            my.downsample <- keep.libs.downsample[my.idx]
+            
+            if (my.downsample > 1) return(dt.tmp[sample(.N, my.downsample)])
+            ## if (my.downsample < 1) return(dt.tmp[sample(.N, .N * downsample)])
+        }
+        libs.counts <- sapply(keep.libs, function(x) dt.sed[lib == x, .N])
+        cat('Post-filter lib counts:', libs.counts, '\n')
+            
+    }
     cat('Keeping: ', dt.sed[, .N], 'sites\n')
+
+    if (!is.null(keep.libs.add_deam)) {
+        cat('Adding "deamination" to requested libraries: ', keep.libs, '\n')
+        cat(' - specifically to this proportion of non-deaminated reads: ', keep.libs.add_deam, '\n')
+        libs.deam <- sapply(keep.libs, function(x) dt.sed[lib == x, sum(deam53 == T)/.N])
+        cat('Deam rates before modification: ', libs.deam, '\n')
+        dt.sed <- foreach (my.idx = 1:length(keep.libs), .combine = rbind) %do% {
+            my.lib <- keep.libs[my.idx]
+            dt.tmp <- dt.sed[lib == my.lib]
+            my.deam <- keep.libs.add_deam[my.idx]
+
+            if (my.deam <= 1) {
+                dt.tmp[deam53 == F, deam53 := sample(c(T,F), .N, replace = T, prob = c(my.deam,1-my.deam))]
+                return(dt.tmp)
+            }
+        }
+        libs.deam <- sapply(keep.libs, function(x) dt.sed[lib == x, sum(deam53 == T)/.N])
+        cat('Deam rates after modification: ', libs.deam, '\n')
+    }
+    
   } else {
     ## not really necessary, takes up a lot more space...
     dt.sed <- data.table(dt.sed)
@@ -187,7 +241,8 @@ bootstrap_gt_data <- function(dt.sed.analysis, blocks = 0, drop.one = 0, shuffle
 
 
 read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt', 'c_gt', 'a_gt', 'd_gt'),
-                                   keep.libs = NULL, sample_mh_from_freq = T, include_ti = F, merge_libs = F, 
+                                   keep.libs = NULL, keep.libs.downsample = NULL, keep.libs.add_deam = NULL,
+                                   sample_mh_from_freq = T, include_ti = F, merge_libs = F, 
                                    site.cats = 'all', n_qc0 = 0, n_qc1 = 0, downsample = 0, rg_props = 1,
                                    block_bootstrap = 0) {
   cat('Reading genotypes..', gts_file, '\n')
@@ -199,6 +254,8 @@ read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt
   
   dt.sed <- basic_filtering_gts(dt.sed, 
                                 keep.libs = keep.libs, 
+                                keep.libs.downsample = keep.libs.downsample, 
+                                keep.libs.add_deam = keep.libs.add_deam, 
                                 sample_mh_from_freq = sample_mh_from_freq,
                                 include_ti = include_ti,
                                 merge_libs = merge_libs)
