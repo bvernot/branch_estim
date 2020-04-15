@@ -100,6 +100,12 @@ parser$add_argument("-downsample", "--downsample", type='integer', default=0,
 parser$add_argument("-block-bootstrap", "--block-bootstrap", type='integer', default=0,
                     help="Split data randomly into N blocks (does not currently use location information), and then resample from these blocks.")
 
+parser$add_argument("-faunal-der-rate", "--faunal-der-rate", type='double', default=0,
+                    help="Assume that any faunal contamination has the derived allele with this probability")
+parser$add_argument("-error-rate", "--error-rate", type='double', default=0.001,
+                    help="Assume sequencing errors with this probability")
+
+
 parser$add_argument("-add-contam", "--add-contam", type='double', default=0, nargs='+',
                     help="Artificially add contamination in these proportions")
 parser$add_argument("-add-faunal", "--add-faunal", type='double', default=0, nargs='+',
@@ -334,9 +340,14 @@ if (args$ll_surface) {
     cat('--ll-surface option requires --output-table\n')
     if(!interactive()) q()
   }
+  cat('args$error_rate', args$error_rate, '\n')
+  cat('args$faunal_der_rate', args$faunal_der_rate, '\n')
   dt.x.new = grid_t_em_theta(dt.sed.analysis,
                              sims.dat,
-                             my.branches = args$branches, bins.t = args$nbins,
+                             my.branches = args$branches,
+                             err_rate = args$error_rate,
+                             faunal_der_rate = args$faunal_der_rate,
+                             bins.t = args$nbins,
                              max.iter = args$num_em_iters, ll.converge = args$ll_converge, 
                              nsteps = args$nsteps, ll.thresh = args$ll_thresh)
   for (i in 1:length(args$tags)) {
@@ -356,7 +367,9 @@ if (args$ll_surface) {
 ## ISSUE - not sure that ll.converge works?
 if (length(args$branches) == 1) {
   cat('Running EM on single branch\n')
-  x.em = sed_EM(dt.sed.analysis, sims.dat, my.branch = args$branches, err_rate = 0.001,
+  x.em = sed_EM(dt.sed.analysis, sims.dat, my.branch = args$branches,
+                err_rate = args$err_rate,
+                faunal_der_rate = args$faunal_der_rate,
                 max.iter = args$num_em_iters, ll.converge = args$ll_converge,
                 set.faunal_prop = args$set_faunal_prop,
                 set.mh_contam = args$set_mh_contam,
@@ -368,7 +381,10 @@ if (length(args$branches) == 1) {
   }
 } else {
   cat('Running EM on multiple branches, with simple grid after\n')
-  dt.sed.analysis.ret <- run_simple_analysis(dt.sed.analysis, sims.dat, branches = args$branches, blocks = 10, nbootstraps = 10, max.iter = 40)
+  dt.sed.analysis.ret <- run_simple_analysis(dt.sed.analysis, sims.dat, branches = args$branches,
+                                             err_rate = args$err_rate,
+                                             faunal_der_rate = args$faunal_der_rate,
+                                             blocks = 10, nbootstraps = 10, max.iter = 40)
   dt.sed.analysis.ret$tag <- args$tag
   saveRDS(dt.sed.analysis.ret, paste0(args$output_table,'.full.RDS'))
 }
