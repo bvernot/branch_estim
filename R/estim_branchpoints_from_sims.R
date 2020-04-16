@@ -340,8 +340,11 @@ if (args$ll_surface) {
     cat('--ll-surface option requires --output-table\n')
     if(!interactive()) q()
   }
-  cat('args$error_rate', args$error_rate, '\n')
-  cat('args$faunal_der_rate', args$faunal_der_rate, '\n')
+  ## cat('args$error_rate', args$error_rate, '\n')
+  ## cat('args$faunal_der_rate', args$faunal_der_rate, '\n')
+
+  #print(dt.sed.analysis[, .N, rg])
+  
   dt.x.new = grid_t_em_theta(dt.sed.analysis,
                              sims.dat,
                              my.branches = args$branches,
@@ -368,21 +371,24 @@ if (args$ll_surface) {
 if (length(args$branches) == 1) {
   cat('Running EM on single branch\n')
   x.em = sed_EM(dt.sed.analysis, sims.dat, my.branch = args$branches,
-                err_rate = args$err_rate,
+                err_rate = args$error_rate,
                 faunal_der_rate = args$faunal_der_rate,
                 max.iter = args$num_em_iters, ll.converge = args$ll_converge,
                 set.faunal_prop = args$set_faunal_prop,
                 set.mh_contam = args$set_mh_contam,
                 p_h_method = args$sim_method)
+
   if (!is.null(args$output_table)) {
-    fwrite(ll_ret_to_dt_sims(x.em, args), args$output_table, sep='\t')
+
+      
+    fwrite(ll_ret_to_dt(x.em, args, dt.sed.analysis), args$output_table, sep='\t')
     x.em$args <- args
     saveRDS(x.em, paste0(args$output_table,'.RDS'))
   }
 } else {
   cat('Running EM on multiple branches, with simple grid after\n')
   dt.sed.analysis.ret <- run_simple_analysis(dt.sed.analysis, sims.dat, branches = args$branches,
-                                             err_rate = args$err_rate,
+                                             err_rate = args$error_rate,
                                              faunal_der_rate = args$faunal_der_rate,
                                              blocks = 10, nbootstraps = 10, max.iter = 40)
   dt.sed.analysis.ret$tag <- args$tag

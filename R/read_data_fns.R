@@ -43,7 +43,7 @@ check_and_add_required_cols <- function(dt.sed.og, f_mh.col, agCols, sample_mh_f
 }
 
 
-basic_filtering_gts <- function(dt.sed, keep.libs, keep.libs.downsample, keep.libs.add_deam, sample_mh_from_freq, include_ti, merge_libs) {
+basic_filtering_gts <- function(dt.sed, keep.libs, keep.libs.add_deam, sample_mh_from_freq, include_ti) {
 
     dt.sed.prefilter_counts <- dt.sed[, .(N.prefilter = .N), keyby=lib]
     
@@ -70,32 +70,6 @@ basic_filtering_gts <- function(dt.sed, keep.libs, keep.libs.downsample, keep.li
     cat('Restricting to requested libraries: ', keep.libs, '\n')
     dt.sed <- dt.sed[lib %in% keep.libs]
 
-    if (!is.null(keep.libs.downsample)) {
-        cat('Downsampling requested libraries: ', keep.libs, '\n')
-        cat('To proportions/counts: ', keep.libs.downsample, '\n')
-
-        ## check that downsample counts are less than .N
-        libs.counts <- sapply(keep.libs, function(x) dt.sed[lib == x, .N])
-        cat('Pre-filter lib counts:', libs.counts, '\n')
-        if (sum(libs.counts < keep.libs.downsample) > 0) {
-            cat('Requested lib downsample numbers are larger than number of reads in lib:', keep.libs[libs.counts < keep.libs.downsample], '\n')
-            cat(' - requested:', keep.libs.downsample[libs.counts < keep.libs.downsample], '\n')
-            cat(' - actual:', libs.counts[libs.counts < keep.libs.downsample], '\n')
-            q(save='no', status=1)
-        }
-
-        dt.sed <- foreach (my.idx = 1:length(keep.libs), .combine = rbind) %do% {
-            my.lib <- keep.libs[my.idx]
-            dt.tmp <- dt.sed[lib == my.lib]
-            my.downsample <- keep.libs.downsample[my.idx]
-            
-            if (my.downsample > 1) return(dt.tmp[sample(.N, my.downsample)])
-            ## if (my.downsample < 1) return(dt.tmp[sample(.N, .N * downsample)])
-        }
-        libs.counts <- sapply(keep.libs, function(x) dt.sed[lib == x, .N])
-        cat('Post-filter lib counts:', libs.counts, '\n')
-            
-    }
     cat('Keeping: ', dt.sed[, .N], 'sites\n')
 
     if (!is.null(keep.libs.add_deam)) {
@@ -123,23 +97,25 @@ basic_filtering_gts <- function(dt.sed, keep.libs, keep.libs.downsample, keep.li
     cat('Using all libraries\n')
   }
   
-  if (merge_libs) {
-    dt.sed[, lib := 'merged_libs']
-    cat('Merging libraries\n')
-  }
+  ## if (merge_libs) {
+  ##   dt.sed[, lib := 'merged_libs']
+  ##   cat('Merging libraries\n')
+  ## }
   dt.sed
 }
 
 
 subset_gt_states <- function(dt.sed, site_cats) {
 
+    cat('Subsetting genotype states:\n')
+    
   ### ISSUE - this requires that v_gt, c_gt, a_gt, d_gt are kept/present in sed.gt
   if ('poly_arc' %in% site_cats || 'all' %in% site_cats) {
     dt.sed.poly.full <- dt.sed[!(v_gt == c_gt & v_gt == a_gt & v_gt == d_gt)]
-    cat('Polymorphic in archaic: ', dt.sed.poly.full[, .N], 'sites\n')
+    cat(' Polymorphic in archaic: ', dt.sed.poly.full[, .N], 'sites\n')
   } else if ('poly_neand' %in% site_cats) {
     dt.sed.poly.full <- dt.sed[!(v_gt == c_gt & v_gt == a_gt)]
-    cat('Polymorphic in neands: ', dt.sed.poly.full[, .N], 'sites\n')
+    cat(' Polymorphic in neands: ', dt.sed.poly.full[, .N], 'sites\n')
   } else {
     dt.sed.poly.full <- data.table()
   }
@@ -147,7 +123,7 @@ subset_gt_states <- function(dt.sed, site_cats) {
   ### ISSUE - this requires that v_gt, c_gt, a_gt, d_gt are kept/present in sed.gt
   if ('mh_seg_arc_fixed0' %in% site_cats || 'all' %in% site_cats) {
     dt.sed.mh.full <- dt.sed[v_gt == c_gt & v_gt == a_gt & v_gt == d_gt & v_gt == 0 & f_mh > 0]
-    cat('Ancestral in archaics, seg in MH: ', dt.sed.mh.full[, .N], 'sites\n')
+    cat(' Ancestral in archaics, seg in MH: ', dt.sed.mh.full[, .N], 'sites\n')
   } else {
     dt.sed.mh.full <- data.table()
   }
@@ -157,10 +133,12 @@ subset_gt_states <- function(dt.sed, site_cats) {
   ## early branching hominins / denisovans have an elevated faunal contam proportion?
   if ('sed_qc_hominin' %in% site_cats || 'all' %in% site_cats) {
     dt.sed.qc.full <- dt.sed[freqs.FLAG == 'invar' & c_gt == 2]
-    cat('Fixed derived in archaics and all [surveyed] MH: ', dt.sed.qc.full[, .N], 'sites\n')
+    cat(' Fixed derived in archaics and all [surveyed] MH: ', dt.sed.qc.full[, .N], 'sites\n')
   } else {
     dt.sed.qc.full <- data.table()
   }
+
+    print(dt.sed.poly.full)
   
   ### ISSUE - we end up with a dt.sed that is not sorted by position, which causes issues for the block sampling / jackknifing that I do later  
   rbind(dt.sed.poly.full, dt.sed.mh.full, dt.sed.qc.full)
@@ -195,13 +173,41 @@ add_sim_qc_sites <- function(dt.sed, n_qc0, n_qc1) {
   rbind(dt.sed.qc.full, dt.sed)
 }
 
-downsample_gt_sites <- function(dt.sed, downsample) {
+downsample_gt_sites <- function(dt.sed, downsample, keep.libs, keep.libs.downsample) {
 
-  if (downsample == 0) return(dt.sed)
+    if (!is.null(keep.libs.downsample) & !is.null(keep.libs)) {
+
+        cat('Downsampling requested libraries: ', keep.libs, '\n')
+        cat('To proportions/counts: ', keep.libs.downsample, '\n')
+        
+        ## check that downsample counts are less than .N
+        libs.counts <- sapply(keep.libs, function(x) dt.sed[lib == x, .N])
+        cat('Pre-filter lib counts:', libs.counts, '\n')
+        if (sum(libs.counts < keep.libs.downsample) > 0) {
+            cat('Requested lib downsample numbers are larger than number of reads in lib:', keep.libs[libs.counts < keep.libs.downsample], '\n')
+            cat(' - requested:', keep.libs.downsample[libs.counts < keep.libs.downsample], '\n')
+            cat(' - actual:', libs.counts[libs.counts < keep.libs.downsample], '\n')
+            q(save='no', status=1)
+        }
+
+        dt.sed <- foreach (my.idx = 1:length(keep.libs), .combine = rbind) %do% {
+            my.lib <- keep.libs[my.idx]
+            dt.tmp <- dt.sed[lib == my.lib]
+            my.downsample <- keep.libs.downsample[my.idx]
+            
+            if (my.downsample > 1) return(dt.tmp[sample(.N, my.downsample)])
+            ## if (my.downsample < 1) return(dt.tmp[sample(.N, .N * downsample)])
+        }
+        libs.counts <- sapply(keep.libs, function(x) dt.sed[lib == x, .N])
+        cat('Post-filter lib counts:', libs.counts, '\n')
+        return(dt.sed)
+    }
+
+    if (downsample == 0) return(dt.sed)
   
-  ### ISSUE - should check that downsample is less than .N
-  if (downsample > 1) return(dt.sed[sample(.N, downsample)])
-  if (downsample < 1) return(dt.sed[sample(.N, .N * downsample)])
+    ## ISSUE - should check that downsample is less than .N
+    if (downsample > 1) return(dt.sed[sample(.N, downsample)])
+    if (downsample < 1) return(dt.sed[sample(.N, .N * downsample)])
 
 }
 
@@ -254,22 +260,31 @@ read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt
   
   dt.sed <- basic_filtering_gts(dt.sed, 
                                 keep.libs = keep.libs, 
-                                keep.libs.downsample = keep.libs.downsample, 
                                 keep.libs.add_deam = keep.libs.add_deam, 
                                 sample_mh_from_freq = sample_mh_from_freq,
-                                include_ti = include_ti,
-                                merge_libs = merge_libs)
+                                include_ti = include_ti)
   
   add_gt_categories(dt.sed, agCols = agCols)
   
   dt.sed.analysis <- subset_gt_states(dt.sed, site_cats = site.cats)
   dt.sed.analysis <- add_sim_qc_sites(dt.sed.analysis, n_qc0 = n_qc0, n_qc1 = n_qc1)
-  
-  dt.sed.analysis <- downsample_gt_sites(dt.sed.analysis, downsample = downsample)
+  dt.sed.analysis <- downsample_gt_sites(dt.sed.analysis, downsample = downsample,
+                                         keep.libs = keep.libs, 
+                                         keep.libs.downsample = keep.libs.downsample)
   
   if (block_bootstrap > 1) dt.sed.analysis <- bootstrap_gt_data(dt.sed.analysis, blocks = block_bootstrap)
-  
-  add_rg(dt.sed.analysis, rg_props = rg_props)
+
+  cat('\nFinal number of snps left per lib/RG:\n\n')
+  print(dt.sed.analysis[, .N, lib][, .(N, prop=N/sum(N), lib)])
+  print(dt.sed.analysis[, .N, .(lib,deam53)][, .(N, prop=N/sum(N), lib), deam53])
+  cat('\n')
+
+  if (merge_libs) {
+      dt.sed.analysis[, lib := 'merged_libs']
+      cat('Merging libraries\n')
+  }
+
+  dt.sed.analysis <- add_rg(dt.sed.analysis, rg_props = rg_props)
   
 }
 

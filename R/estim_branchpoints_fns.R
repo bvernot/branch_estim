@@ -631,8 +631,8 @@ sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate, faunal_der_ra
                    set.branchtime = 'estim', set.mh_contam = 'estim', set.faunal_prop = 'estim', p_h_method = 'full',
                    fail_on_neg_change = F, fail_on_neg_change_q = F) {
 
-    cat('sed_EM: err_rate', err_rate, '\n')
-    cat('sed_EM: faunal_der_rate', faunal_der_rate, '\n')
+    ## cat('sed_EM: err_rate', err_rate, '\n')
+    ## cat('sed_EM: faunal_der_rate', faunal_der_rate, '\n')
 
 
   # hey  
@@ -685,21 +685,21 @@ sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate, faunal_der_ra
         dt.sed.analysis.rg <- dt.sed.analysis[rg == my.rg]
         q_params = c(mh_contam = dt.theta[rg == my.rg, mh_contam],
                      faunal_prop = dt.theta[rg == my.rg, faunal_prop])
-        print(q_params)
-        cat('optim: err_rate', err_rate, '\n')
-        cat('optim: faunal_der_rate', faunal_der_rate, '\n')
-        print(q_theta(dt.sed.analysis.rg,
-                mh_contam = q_params[1],
-                faunal_prop = q_params[2],
-                err_rate = err_rate,
-                faunal_der_rate = faunal_der_rate))
+        ## print(q_params)
+        ## cat('optim: err_rate', err_rate, '\n')
+        ## cat('optim: faunal_der_rate', faunal_der_rate, '\n')
+        ## print(q_theta(dt.sed.analysis.rg,
+        ##         mh_contam = q_params[1],
+        ##         faunal_prop = q_params[2],
+        ##         err_rate = err_rate,
+        ##         faunal_der_rate = faunal_der_rate))
         # o.theta = optim(q_params, function(params) -q_theta(dt.sed.analysis[rg == my.rg],
         #                                                     mh_contam = params['mh_contam'],
         #                                                     faunal_prop = params['faunal_prop'],
         #                                                     err_rate = err_rate),
         #                 control = list(), lower = 0.000001, upper = 0.999999, method = 'L-BFGS-B')
         o.theta = constrOptim(q_params, function(params) {
-                                        # cat(params, '\n')
+            ## cat(params, '\n')
             -q_theta(dt.sed.analysis.rg,
                      mh_contam = params[1],
                      faunal_prop = params[2],
@@ -711,8 +711,8 @@ sed_EM <- function(dt.sed.analysis, sims.dat, my.branch, err_rate, faunal_der_ra
             ci=c( -1, 0, 0 ))
         dt.theta[rg == my.rg, mh_contam := o.theta$par['mh_contam']]
         dt.theta[rg == my.rg, faunal_prop := o.theta$par['faunal_prop']]
-                                        # print(o.theta)
-        cat('theta convergence:', o.theta$convergence, '\n')
+        ## print(o.theta)
+        # cat('theta convergence:', o.theta$convergence, '\n')
         # iter.ll = iter.ll - o.theta$value
       }
     } else if (set.mh_contam == 'estim') {
@@ -864,7 +864,7 @@ ll_ret_to_dt_sims <- function(my.ret, args) {
   dt.theta = data.table(my.ret$dt.theta)
   dt.theta[, true_mh_contam := args$add_contam]
   dt.theta[, true_faunal_prop := args$add_faunal]
-  
+
   dt = data.table(branch = my.ret$branch,
              true_branch = args$true_branch,
              branchtime = my.ret$branchtime,
@@ -883,21 +883,19 @@ ll_ret_to_dt_sims <- function(my.ret, args) {
 }
 # ll_ret_to_dt_sims(x.em, args)
 
-ll_ret_to_dt <- function(my.ret, sites.cat) {
-  data.table(max.ll = my.ret$max.ll,
-             branch = my.ret$branch,
-             branchtime = my.ret$branchtime,
-             branchtime.rel = (my.ret$branchtime - sims.dat$bounds.for.branch(my.ret$branch, 'low', sims.dat)) / 
-               (sims.dat$bounds.for.branch(my.ret$branch, 'high', sims.dat) - sims.dat$bounds.for.branch(my.ret$branch, 'low', sims.dat)),
-             mh_contam_deamT = my.ret$dt.theta[rg %like% 'deam_TRUE', mh_contam],
-             faunal_prop_deamT = my.ret$dt.theta[rg %like% 'deam_TRUE', faunal_prop],
-             mh_contam_deamF = my.ret$dt.theta[rg %like% 'deam_FALSE', mh_contam],
-             faunal_prop_deamF = my.ret$dt.theta[rg %like% 'deam_FALSE', faunal_prop],
-             max.ll.iter = length(my.ret$ll.trace),
-             next.ll = tail(my.ret$ll.trace,2)[1],
-             sites.cat = sites.cat, 
-             lib = args$libs,
-             tag = args$tag)
+ll_ret_to_dt <- function(my.ret, args, dt.sed.analysis) {
+
+    dt.ret <- merge(my.ret$dt.theta, dt.sed.analysis[, .(nsnps = .N), rg], by='rg')
+    dt.ret[, branchtime := my.ret$branchtime]
+    dt.ret[, branch := my.ret$branch]
+    dt.ret[, man.max.ll := my.ret$man.max.ll]
+    dt.ret[, man.max.ll.last := tail(my.ret$man.ll.trace,1)]
+    dt.ret[, n.iter := length(my.ret$man.ll.trace)]
+    dt.ret[, my.t.idx := 0]
+    dt.ret[, max.ll := man.max.ll]
+    # dt.ret[, step.x := 0]
+
+    dt.ret
 }
 # ll_ret_to_dt(my.ret$a, args$site_cat)
 
@@ -909,9 +907,9 @@ sed_EM_allbranch <- function(dt.sed.analysis, sims.dat, branches = NULL, ...) {
   ret = list()
   max.ll = -1e200
   a = list(...)
-  cat('in sed_EM_allbranch\n')
-  cat('allbranch: err_rate', a$err_rate, '\n')
-  cat('allbranch: faunal_der_rate', a$faunal_der_rate, '\n')
+  ## cat('in sed_EM_allbranch\n')
+  ## cat('allbranch: err_rate', a$err_rate, '\n')
+  ## cat('allbranch: faunal_der_rate', a$faunal_der_rate, '\n')
 
   if (is.null(branches)) branches <- sims.dat$branches
   for (my.branch in branches) {
@@ -958,7 +956,7 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate, fa
                             max.iter = 30, ll.converge = 1e-6,
                             nsteps = 3, print.debug = F, ll.thresh = 4) {
 
-    cat('faunal_der_rate', faunal_der_rate, '\n')
+    ## cat('faunal_der_rate', faunal_der_rate, '\n')
     
   ## first get the true max likelihood estimate of theta and t
   hey.em <- sed_EM_allbranch(dt.sed.analysis, sims.dat,
@@ -991,7 +989,7 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate, fa
   dt.ret[, my.t.idx := 0]
   dt.ret[, max.ll := man.max.ll]
   dt.ret[, step.x := 0]
-  print(dt.ret)
+  ##print(dt.ret)
   print(dt.ret)
 
   for (step.x in 1:nsteps) {
