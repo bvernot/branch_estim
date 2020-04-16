@@ -99,6 +99,8 @@ parser$add_argument("-downsample", "--downsample", type='integer', default=0,
                     help="Downsample data to N reads. This samples the entire dataset, so e.g. if originally each read group was 25% of the data, these proportions may change.")
 parser$add_argument("-block-bootstrap", "--block-bootstrap", type='integer', default=0,
                     help="Split data randomly into N blocks (does not currently use location information), and then resample from these blocks.")
+parser$add_argument("-drop-one", "--drop-one-block", type='integer', default=0,
+                    help="Instead of resampling, drop block N. Requires --block-bootstrap.")
 
 parser$add_argument("-faunal-der-rate", "--faunal-der-rate", type='double', default=0,
                     help="Assume that any faunal contamination has the derived allele with this probability")
@@ -205,7 +207,8 @@ dt.sed.analysis <- read_and_process_genos(args$simple_gts, f_mh.col = args$f_mh,
                                           n_qc0 = args$n_qc0,
                                           n_qc1 = args$n_qc1,
                                           downsample = args$downsample, rg_props = args$rg_props,
-                                          block_bootstrap = args$block_bootstrap)
+                                          block_bootstrap = args$block_bootstrap,
+                                          drop_one = args$drop_one_block)
 
 
 
@@ -370,20 +373,28 @@ if (args$ll_surface) {
 ## ISSUE - not sure that ll.converge works?
 if (length(args$branches) == 1) {
   cat('Running EM on single branch\n')
-  x.em = sed_EM(dt.sed.analysis, sims.dat, my.branch = args$branches,
+  x.em = sed_EM(dt.sed.analysis,
+                sims.dat,
+                my.branch = args$branches,
                 err_rate = args$error_rate,
                 faunal_der_rate = args$faunal_der_rate,
-                max.iter = args$num_em_iters, ll.converge = args$ll_converge,
+                max.iter = args$num_em_iters,
+                ll.converge = args$ll_converge,
                 set.faunal_prop = args$set_faunal_prop,
                 set.mh_contam = args$set_mh_contam,
                 p_h_method = args$sim_method)
 
   if (!is.null(args$output_table)) {
 
+      dt.x.new = ll_ret_to_dt(x.em, args, dt.sed.analysis)
       
-    fwrite(ll_ret_to_dt(x.em, args, dt.sed.analysis), args$output_table, sep='\t')
-    x.em$args <- args
-    saveRDS(x.em, paste0(args$output_table,'.RDS'))
+      for (i in 1:length(args$tags)) {
+          dt.x.new[, (args$tag_labels[i]) := args$tags[i]]
+      }
+      
+      fwrite(dt.x.new, args$output_table, sep='\t')
+      x.em$args <- args
+      saveRDS(x.em, paste0(args$output_table,'.RDS'))
   }
 } else {
   cat('Running EM on multiple branches, with simple grid after\n')

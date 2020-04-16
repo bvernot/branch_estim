@@ -38,7 +38,7 @@ check_and_add_required_cols <- function(dt.sed.og, f_mh.col, agCols, sample_mh_f
   
   ## now remove unneeded columns
   ### ISSUE - this should be dynamic, and take into account agCols
-  dt.sed <- dt.sed.og[, .(sed_gt, v_gt, c_gt, a_gt, d_gt, f_mh, mh, lib, freqs.FLAG, deam53)]
+  dt.sed <- dt.sed.og[, .(chrom, pos, sed_gt, v_gt, c_gt, a_gt, d_gt, f_mh, mh, lib, freqs.FLAG, deam53)]
   dt.sed
 }
 
@@ -227,19 +227,24 @@ add_rg <- function(dt.sed, rg_props) {
 
 
 ## if blocks > 0, bootstrap over blocks rather than single sites
-## if drop.one > 0, then drop just that block
-bootstrap_gt_data <- function(dt.sed.analysis, blocks = 0, drop.one = 0, shuffle_first = T) {
+## if drop_one > 0, then drop just that block
+bootstrap_gt_data <- function(dt.sed.analysis, blocks = 0, drop_one = 0, shuffle_first = T) {
   dt <- data.table(dt.sed.analysis[sample(.N)])
   if (blocks == 0) return(dt[sample(.N,.N,replace=T)])
   
   block.labels <- sort(rep(1:blocks, length.out=dt[, .N]))
+  setorder(dt, chrom, pos)
+
   dt[, block.label := as.character(block.labels)]
   setkey(dt, block.label)
-  if (drop.one == 0) {
-    these.blocks = as.character(sample(blocks, blocks, replace = T))
-    dt[these.blocks]
+
+  if (drop_one == 0) {
+      these.blocks = as.character(sample(blocks, blocks, replace = T))
+      cat('Sampling blocks:', sort(these.blocks), '\n')
+      dt[these.blocks]
   } else {
-    dt[!as.character(drop.one)]
+      cat('Dropping block', drop_one, 'out of', unique(block.labels), '\n')
+    dt[!as.character(drop_one)]
   }
 }
 # bootstrap_gt_data(dt.sed.analysis, 100)[, .N, block.label]
@@ -250,7 +255,7 @@ read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt
                                    keep.libs = NULL, keep.libs.downsample = NULL, keep.libs.add_deam = NULL,
                                    sample_mh_from_freq = T, include_ti = F, merge_libs = F, 
                                    site.cats = 'all', n_qc0 = 0, n_qc1 = 0, downsample = 0, rg_props = 1,
-                                   block_bootstrap = 0) {
+                                   block_bootstrap = 0, drop_one = 0) {
   cat('Reading genotypes..', gts_file, '\n')
   dt.sed.og <- fread(gts_file)
   cat('  Read:', dt.sed.og[, .N], 'sites\n')
@@ -272,7 +277,7 @@ read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt
                                          keep.libs = keep.libs, 
                                          keep.libs.downsample = keep.libs.downsample)
   
-  if (block_bootstrap > 1) dt.sed.analysis <- bootstrap_gt_data(dt.sed.analysis, blocks = block_bootstrap)
+  if (block_bootstrap > 1) dt.sed.analysis <- bootstrap_gt_data(dt.sed.analysis, blocks = block_bootstrap, drop_one = drop_one)
 
   cat('\nFinal number of snps left per lib/RG:\n\n')
   print(dt.sed.analysis[, .N, lib][, .(N, prop=N/sum(N), lib)])
