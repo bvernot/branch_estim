@@ -55,19 +55,21 @@ parser$add_argument("-ll-surface", "--ll-surface", action="store_true", default=
                     help="Get a true maximum likelihood surface for branchtime, over a semi-random grid of times. The surface w/ ll ~ less than ll.thresh away from the max is explored more extensively with each step (nsteps)")
 parser$add_argument("-nsteps", "--nsteps", required=F, default=3, type='integer',
                     help="Number of steps to run the ll-surface search [default 3]")
-parser$add_argument("-nbins", "--nbins", required=F, default=10,
+parser$add_argument("-nbins", "--nbins", required=F, default=10, type='integer',
                     help="Number of bins to split each branch into for ll-surface search [default 10]")
-parser$add_argument("-ll-thresh", "--ll-thresh", required=F, default=5,
+parser$add_argument("-tbreaks", "--time-breaks", required=F, default=NULL, type='double',
+                    help="Force the first search in ll-surface to do a grid with breaks T over the whole tree DOES NOT CURRENTLY WORK [default not used]")
+parser$add_argument("-ll-surface-thresh", "--ll-surface-thresh", required=F, default=5, type='double',
                     help="With --ll-surface, search extensively within ll-thresh of the maximum likelihood [default 5]")
 
 
 parser$add_argument("-branches", "--branches", required=F, default=c('c', 'v', 'anc_1', 'a', 'anc_2', 'd', 'anc_3'), nargs='+',
                     help="Only run the EM on a single branch. e.g. --branch v.  Required for --debug-gts-at-time.")
 
-parser$add_argument("-true-branch", "--true-branch", required=F, default='NA',
-                    help="The simulated branch, used in plots and tables.")
-parser$add_argument("-true-branchtime", "--true-branchtime", required=F, default='NA',
-                    help="The simulated branchtime, used in plots and tables.")
+## parser$add_argument("-true-branch", "--true-branch", required=F, default='NA',
+##                     help="The simulated branch, used in plots and tables.")
+## parser$add_argument("-true-branchtime", "--true-branchtime", required=F, default='NA',
+##                     help="The simulated branchtime, used in plots and tables.")
 
 parser$add_argument("-set-mh-contam", "--set-mh-contam", required=F, default='estim',
                     help="If provided, constrain MH contamination to this value. [currently only works with a single value, across all RG]")
@@ -141,6 +143,7 @@ if (interactive()) {
   args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/test_sims_v_0.7601_ALL.gt.txt.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims.dat.RDS --debug-gts-at-time 0.7601 --prefix what -nc 2 -sites all -tags hey --sim-method simple --libs sims009.v.0.7601.1 --rg-props .2 .8 --add-contam 0 .1 --downsample 10000 --n-qc1 1000 --branch v --num-em-iters 5 -table hey.txt', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tags hey --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 --branch v --num-em-iters 10 -table hey.txt', split = ' ')[[1]])
   args <- parser$parse_args(strsplit('-gts ~/GoogleDrive/branch_point_esimates/data/all_simple_gts.mez.tsv.gz --sims ~/GoogleDrive/branch_point_esimates/data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tags hey --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 --num-em-iters 2 --ll-surface --nsteps 2 -table hey.txt', split = ' ')[[1]])
+  args <- parser$parse_args(strsplit('-gts data/all_simple_gts.mez.tsv.gz --sims data/sims_og_newrun.txt --prefix what -nc 2 -sites all -tags hey --sim-method simple --libs Mez1_R5661 -f-mh f_mh.yri --n-qc1 0 --num-em-iters 2 --ll-surface --nsteps 2 -table hey.txt', split = ' ')[[1]])
   #  Mez2_A9180
   # args <- parser$parse_args(strsplit('--splits ~/Documents/index_cross_contam/data/ludovic/splitstats_ludovic_orlando_001.myformat3.txt -nhits 100 --prefix splitstats_ludovic_orlando_001 -nc 2 --sources 150', split = ' ')[[1]])
 } else {
@@ -354,8 +357,9 @@ if (args$ll_surface) {
                              err_rate = args$error_rate,
                              faunal_der_rate = args$faunal_der_rate,
                              bins.t = args$nbins,
+                             t.breaks= args$time_breaks,
                              max.iter = args$num_em_iters, ll.converge = args$ll_converge, 
-                             nsteps = args$nsteps, ll.thresh = args$ll_thresh)
+                             nsteps = args$nsteps, ll.thresh = args$ll_surface_thresh)
   for (i in 1:length(args$tags)) {
     dt.x.new[, (args$tag_labels[i]) := args$tags[i]]
   }

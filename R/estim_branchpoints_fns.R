@@ -952,7 +952,7 @@ sed_EM_allbranch <- function(dt.sed.analysis, sims.dat, branches = NULL, ...) {
 ## returns a data.table
 
 grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate, faunal_der_rate, p_h_method = 'simple',
-                            bins.t = 10,
+                            bins.t = 10, t.breaks = NULL,
                             max.iter = 30, ll.converge = 1e-6,
                             nsteps = 3, print.debug = F, ll.thresh = 4) {
 
@@ -990,7 +990,9 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate, fa
   dt.ret[, max.ll := man.max.ll]
   dt.ret[, step.x := 0]
   ##print(dt.ret)
-  print(dt.ret)
+    print(dt.ret)
+
+    if (nsteps < 1) return(dt.ret)
 
   for (step.x in 1:nsteps) {
     cat(sprintf('\nstep %d/%d\n', step.x, nsteps))
@@ -999,15 +1001,31 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate, fa
       foreach(my.t.idx = 1:bins.t, .combine = rbind) %dopar% {
         
         if (step.x == 1) {
-          ## on the first iteration, do a grid over the entire tree
-          vals.t = sims.dat$branch.bounds[my.b, unique(seq(t.low, t.high, length.out = bins.t)), on='branch']
+            ## on the first iteration, do a grid over the entire tree
+            if (is.null(t.breaks)) {
+                #cat('t.breaks(null)', t.breaks, '\n')
+                #print(bins.t)
+                #print(sims.dat$branch.bounds)
+                #print(sims.dat$branch.bounds[my.b, on='branch'])
+                #print(sims.dat$branch.bounds[my.b, .N, on='branch'])
+                #print(sims.dat$branch.bounds[my.b, unique(seq(t.low, t.high, length.out = bins.t)), on='branch'])
+                vals.t = sims.dat$branch.bounds[my.b, unique(seq(t.low, t.high, length.out = bins.t)), on='branch']
+                
+            } else {
+                ## DOES NOT WORK, because of my.t.idx, and I don't feel like fixing that issue right now..
+                #cat('t.breaks', t.breaks, '\n')
+                vals.t = sims.dat$branch.bounds[my.b, unique(c(t.low, t.high, seq(t.low, t.high, t.breaks))), on='branch']
+            }
+            cat('Step', step.x, ', calculating ll on branch', my.b, 'for time points:', vals.t, '\n')
         } else {
           ## on additional iterations, only search within ll.thresh of the maximum
-          # print()
-          cat(sprintf('\nstep %d; branch %s; idx %d\n', step.x, my.b, my.t.idx))
+          print(ll.thresh)
+          cat(sprintf('\nstep %d; branch %s; idx %d; thresh %f\n', step.x, my.b, my.t.idx, ll.thresh))
           # print()
           ## sometimes the ll are very slightly different, so uniq doesn't work.  so I take the mean per branchtime, thus guaranteeing that each branchtime is represented only once (but preserving the ll)
           dt.x.branch = setorder(unique(dt.ret[branch == my.b, .(branchtime, man.max.ll = mean(man.max.ll), max.ll), branchtime]), branchtime)
+          dt.x.branch[, ll.diff := max.ll-man.max.ll]
+          dt.x.branch[, ll.diff.thresh := ll.diff < ll.thresh]
           print(dt.x.branch)
           a = dt.x.branch[, max.ll-man.max.ll < ll.thresh]
           print(a)
@@ -1021,8 +1039,10 @@ grid_t_em_theta <- function(dt.sed.analysis, sims.dat, my.branches, err_rate, fa
           a.new[-length(a)] <- a.new[-length(a)] | a[-1]
           print(a.new)
           print(dt.x.branch[a.new])
-          # vals.t = dt.x.branch[a.new, unique(seq(min(branchtime), max(branchtime), length.out = bins.t+1))] ## the endpoints are included, but we have already sampled them
-          vals.t = dt.x.branch[a.new, runif(bins.t, min(branchtime), max(branchtime))] ## the endpoints are included, but we have already sampled them
+            ## vals.t = dt.x.branch[a.new, unique(seq(min(branchtime), max(branchtime), length.out = bins.t+1))] ## the endpoints are included, but we have already sampled them
+            ## Sample a random set of timepoints between the in-bound timepoints - this is a different set each loop, and then we pick the my.t.idx'th point
+            ## it's pretty arbitrary, but it allows the whole thing to be run in parallel
+          vals.t = dt.x.branch[a.new, runif(bins.t, min(branchtime), max(branchtime))]
           print(vals.t)
           vals.t <- vals.t[!vals.t %in% dt.x.branch$branchtime]
           print(vals.t)
