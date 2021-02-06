@@ -133,8 +133,8 @@ parser$add_argument("-ag-cols", "--aggregate-gt-columns", required=F, default = 
 
 parser$add_argument("-script-path", "--script-path", required=F, default = NULL,
                     help='A hack to let R find the path for scripts to source.')
-parser$add_argument("-prefix", "--prefix", required=T,
-                    help="Prefix for output files.")
+parser$add_argument("-prefix", "--prefix", required=F,
+                    help="Prefix for output files [not currently used].")
 
 if (interactive()) {
   # args <- parser$parse_args(strsplit('-gts ~/Downloads/all_simple_gts.tsv.gz --sims ~/Documents/soil_dna_capture/sims.dat.RDS -libs A17273 --prefix what -nc 2', split = ' ')[[1]])
