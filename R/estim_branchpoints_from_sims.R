@@ -49,7 +49,7 @@ parser$add_argument("-merge-libs", "--merge-libs", action="store_true", default=
 parser$add_argument("-table", "--output-table", required=F,
                     help="Save the results to <output-table> in tsv form.  Also saves an RDS of the em results.")
 parser$add_argument("-debug-gts", "--debug-gts-at-time", required=F, type='double', nargs = '+',
-                    help="Given a branch and a branch time, report expected and observed p(der) for each genotype category. Requires --branch also.")
+                    help="Given a branch and a branch time, report expected and observed p(der) for each genotype category. Requires --branches also.")
 
 parser$add_argument("-ll-surface", "--ll-surface", action="store_true", default=F,
                     help="Get a true maximum likelihood surface for branchtime, over a semi-random grid of times. The surface w/ ll ~ less than ll.thresh away from the max is explored more extensively with each step (nsteps)")
@@ -123,6 +123,8 @@ parser$add_argument("-method", "--sim-method", required=F, default = 'simple',
                     help='Site categories to use [not currently implemented]')
 parser$add_argument("-include-ti", "--include-ti", required=F, action='store_true',
                     help='By default, the script removes transitions. This includes them. Will probably change later')
+parser$add_argument("-deam-only", "--deam-only", required=F, action='store_true',
+                    help='By default, the script uses all reads. This drops reads with no deamination (as seen in column "deam53"). May change later.')
 parser$add_argument("-ag-cols", "--aggregate-gt-columns", required=F, default = c('v_gt', 'c_gt', 'a_gt', 'd_gt'), 
                     nargs='+', dest = 'aggregate_gt_columns',
                     help='Use these columns from the simulations to model p(test=der).  Default is to use v_gt,c_gt,a_gt,d_gt [all archaics]')
@@ -205,7 +207,9 @@ sims.dat <- generate_sims_dat(args$sims.dat)
 dt.sed.analysis <- read_and_process_genos(args$simple_gts, f_mh.col = args$f_mh, agCols = args$aggregate_gt_columns,
                                           keep.libs = args$libs, keep.libs.downsample = args$libs_downsample, keep.libs.add_deam = args$libs_add_deam,
                                           sample_mh_from_freq = args$sample_mh_from_freqs,
-                                          include_ti = args$include_ti, merge_libs = args$merge_libs,
+                                          include_ti = args$include_ti,
+                                          deam_only = args$deam_only,
+                                          merge_libs = args$merge_libs,
                                           site.cats = args$site_cat,
                                           n_qc0 = args$n_qc0,
                                           n_qc1 = args$n_qc1,

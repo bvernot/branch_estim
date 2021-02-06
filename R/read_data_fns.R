@@ -15,7 +15,7 @@ check_and_add_required_cols <- function(dt.sed.og, f_mh.col, agCols, sample_mh_f
   if (!'deam53' %in% colnames(dt.sed.og)) dt.sed.og[, deam53 := 'unknown']
   if (!'freqs.FLAG' %in% colnames(dt.sed.og)) dt.sed.og[, freqs.FLAG := '.']
   
-  req_columns <- c('sed_gt', agCols, f_mh.col, 'lib', 'deam53')
+  req_columns <- c('sed_gt', agCols, f_mh.col, 'lib', 'deam53', 'pos', 'chrom')
   if (sum(!req_columns %in% colnames(dt.sed.og)) > 0) {
     cat('Not all required columns are present:\n')
     cat('Required: ', req_columns, '\n')
@@ -43,7 +43,7 @@ check_and_add_required_cols <- function(dt.sed.og, f_mh.col, agCols, sample_mh_f
 }
 
 
-basic_filtering_gts <- function(dt.sed, keep.libs, keep.libs.add_deam, sample_mh_from_freq, include_ti) {
+basic_filtering_gts <- function(dt.sed, keep.libs, keep.libs.add_deam, sample_mh_from_freq, include_ti, deam_only) {
 
     dt.sed.prefilter_counts <- dt.sed[, .(N.prefilter = .N), keyby=lib]
     
@@ -51,10 +51,17 @@ basic_filtering_gts <- function(dt.sed, keep.libs, keep.libs.add_deam, sample_mh
   dt.sed <- dt.sed[complete.cases(dt.sed)]
   
   if (!include_ti) {
-    cat('Filtering transversions:', dt.sed[!freqs.FLAG %like% 'transi', .N], '/', dt.sed[, .N], 'sites removed\n')
+    cat('Filtering to only transversions:', dt.sed[freqs.FLAG %like% 'transi', .N], '/', dt.sed[, .N], 'reads removed\n')
     dt.sed <- dt.sed[!freqs.FLAG %like% 'transi']
   } else {
-    cat('Keeping transversions! Should implement strand filtering!\n')
+    cat('Keeping transitions! Should implement strand filtering!\n')
+  }
+
+  if (deam_only) {
+    cat('Filtering to only deaminated reads:', dt.sed[deam53 == F, .N], '/', dt.sed[, .N], 'reads removed\n')
+    dt.sed <- dt.sed[deam53 == T]
+  } else {
+    cat('Keeping deam and non-deam reads!\n')
   }
 
     dt.sed.postfilter_counts <- dt.sed[, .(N.postfilter = .N), keyby=lib]
@@ -149,7 +156,9 @@ subset_gt_states <- function(dt.sed, site_cats) {
 add_sim_qc_sites <- function(dt.sed, n_qc0, n_qc1) {
   
   ## ISSUE - this assumes certain columns are used / present, not a flexible way of doing this at all.
-  if (n_qc0 + n_qc1 == 0) return(dt.sed)
+    if (n_qc0 + n_qc1 == 0) return(dt.sed)
+
+    print(head(dt.sed))
   
   ## simulate QC sites - only really useful for simulated data
   dt.sed.qc.full <- foreach(my.lib = dt.sed[, unique(lib)], .combine = rbind) %do% {
@@ -253,13 +262,14 @@ bootstrap_gt_data <- function(dt.sed.analysis, blocks = 0, drop_one = 0, shuffle
 
 read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt', 'c_gt', 'a_gt', 'd_gt'),
                                    keep.libs = NULL, keep.libs.downsample = NULL, keep.libs.add_deam = NULL,
-                                   sample_mh_from_freq = T, include_ti = F, merge_libs = F, 
+                                   sample_mh_from_freq = T, include_ti = F, deam_only = F, merge_libs = F, 
                                    site.cats = 'all', n_qc0 = 0, n_qc1 = 0, downsample = 0, rg_props = 1,
                                    block_bootstrap = 0, drop_one = 0) {
   cat('Reading genotypes..', gts_file, '\n')
   dt.sed.og <- fread(gts_file)
   cat('  Read:', dt.sed.og[, .N], 'sites\n')
   cat('  Libraries in file:', dt.sed.og[, unique(lib)], '\n')
+  print(head(dt.sed.og))
   
   dt.sed <- check_and_add_required_cols(dt.sed.og, f_mh.col = f_mh.col, agCols = agCols, sample_mh_from_freq = sample_mh_from_freq)
   
@@ -267,16 +277,17 @@ read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt
                                 keep.libs = keep.libs, 
                                 keep.libs.add_deam = keep.libs.add_deam, 
                                 sample_mh_from_freq = sample_mh_from_freq,
-                                include_ti = include_ti)
+                                include_ti = include_ti, deam_only = deam_only)
   
-  add_gt_categories(dt.sed, agCols = agCols)
   
   dt.sed.analysis <- subset_gt_states(dt.sed, site_cats = site.cats)
   dt.sed.analysis <- add_sim_qc_sites(dt.sed.analysis, n_qc0 = n_qc0, n_qc1 = n_qc1)
   dt.sed.analysis <- downsample_gt_sites(dt.sed.analysis, downsample = downsample,
                                          keep.libs = keep.libs, 
                                          keep.libs.downsample = keep.libs.downsample)
-  
+
+  add_gt_categories(dt.sed.analysis, agCols = agCols)
+
   if (block_bootstrap > 1) dt.sed.analysis <- bootstrap_gt_data(dt.sed.analysis, blocks = block_bootstrap, drop_one = drop_one)
 
   cat('\nFinal number of snps left per lib/RG:\n\n')
@@ -290,7 +301,9 @@ read_and_process_genos <- function(gts_file, f_mh.col = 'f_mh', agCols = c('v_gt
   }
 
   dt.sed.analysis <- add_rg(dt.sed.analysis, rg_props = rg_props)
-  
+
+  # print(head(dt.sed.analysis))
+  # exit()
 }
 
 
