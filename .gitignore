@@ -4,3 +4,6 @@ data/
 figures
 .Rapp.history
 .Rproj.user
+.Rhistory
+analysis_data*
+runall_analysis*
