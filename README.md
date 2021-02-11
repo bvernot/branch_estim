@@ -6,14 +6,36 @@ given joint frequency spectra for _X_ and _T_ at arbitrary branching points of _
 
 ## Input Data
 
+
+
 ### Genotype file
 
 The genotypes are read from a tab-delimited file, with one line per read. This represents a typical file:
 
+| chrom | pos       | freqs.FLAG | v_gt | c_gt | a_gt | d_gt | sed_gt | f_mh.yri   | deam53 | lib    |
+|-------|-----------|------------|------|------|------|------|--------|------------|--------|--------|
+| 11    | 115953451 | invar      | 2    | 2    | 2    | 2    | 1      | 1          | FALSE  | A16112 |
+| 1     | 52606336  | transi     | 2    | 2    | 2    | 0    | 1      | 0          | TRUE   | A16112 |
+| 2     | 125524971 | .          | 0    | 0    | 0    | 0    | 0      | 0.2037037  | FALSE  | A16112 |
+| 8     | 133156471 | .          | 1    | 0    | 0    | 0    | 0      | 0          | FALSE  | A16112 |
+| 16    | 50532171  | transi     | 0    | 0    | 0    | 0    | 0      | 0.09259259 | FALSE  | A16112 |
+| 15    | 65654559  | invar      | 2    | 2    | 2    | 2    | 1      | 1          | FALSE  | A16112 |
 
 The following columns are required:
 
-sed_gt, 'lib', 'deam53', 'pos', 'chrom'
+| COLUMN     | DESCRIPTION                                                                                                                                                                                                                   |
+|------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| chrom      | Chromosome                                                                                                                                                                                                                    |
+| pos        | Positionm                                                                                                                                                                                                                     |
+| freqs.FLAG | A flag indicating certain categories of site. 'invar' indicates sites   that are derived in all known hominins, and is used to calculate faunal   contamination. 'transi' indicates transition sites. '.' is everything else. |
+| v_gt       | Derived diploid genotype in Vindija 33.19 (0/1/2).                                                                                                                                                                            |
+| c_gt       | Derived diploid genotype in Chagyrskaya 8 (0/1/2).                                                                                                                                                                            |
+| a_gt       | Derived diploid genotype in the Altai Neandertal (0/1/2).                                                                                                                                                                     |
+| d_gt       | Derived diploid genotype in Denisova 5 (the high coverage Denisovan)   (0/1/2).                                                                                                                                               |
+| sed_gt     | Derived haploid genotype in the sample of interest (0/1).                                                                                                                                                                     |
+| f_mh.yri   | Derived allele frequency in a modern human population - here, YRI.                                                                                                                                                            |
+| deam53     | Is this read deaminated (TRUE/FALSE)                                                                                                                                                                                          |
+| lib        | Library ID                                                                                                                                                                                                                    |
 
 ## Example commands
 
