@@ -59,7 +59,9 @@ The following columns are required:
         --ll-surface \
         --nsteps 0
 
-This command creates the file `em_output.A16112.tsv`:
+This command creates the file `em_output.A16112.tsv`, which contains the MLE for faunal contamination, modern human contamination, branch, and branchtime, across all possible branches. To create a larger file with the MLE of contamination parameters for a random set of branchtimes on all branches, change the flag `--nsteps 0` to `--nsteps 1` or some other number, depending on the desired resolution. The resulting output can be used to make likelihood surface plots across the entire tree, as shown in Figure 4d of the accompanying manuscript.
+
+The format of `em_output.A16112.tsv` is:
 
 | rg                | mh_contam  | faunal_prop | nsnps | branchtime | branch | man.max.ll | man.max.ll.last | n.iter | my.t.idx | max.ll     | step.x | mylib  |
 |-------------------|------------|-------------|-------|------------|--------|------------|-----------------|--------|----------|------------|--------|--------|
