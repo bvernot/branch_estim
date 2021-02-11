@@ -68,8 +68,9 @@ This command creates the file `em_output.A16112.tsv`:
 
 With the following columns:
 
-| rg              | Read Group - this is a group of reads which   are analyzed together. Typically, this is all deaminated (TRUE) or   non-deaminated (FALSE) reads in one or more libraries.  |
+| COLUMN          | DESCRIPTION                                                                                                                                                                |
 |-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| rg              | Read Group - this is a group of reads which   are analyzed together. Typically, this is all deaminated (TRUE) or   non-deaminated (FALSE) reads in one or more libraries.  |
 | mh_contam       | Maximum likelihood estimate (MLE) of modern human contamination in this   read group.                                                                                      |
 | faunal_prop     | MLE of faunal contamination in this read group.                                                                                                                            |
 | nsnps           | Number of SNPs in this read group.                                                                                                                                         |
