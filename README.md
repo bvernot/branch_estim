@@ -39,20 +39,46 @@ The following columns are required:
 
 ## Example commands
 
-    time Rscript R/estim_branchpoints_from_sims.R -gts GENOTYPE_FILE.tsv \
-        --sims data/simulated_sfs.tsv \
+    sims=data/simulated_sfs.txt
+    genos=data/all_simple_gts.A16112.short3b.tsv.gz
+
+    time Rscript R/estim_branchpoints_from_sims.R \
+        -gts $genos  \
+        --sims $sims \
         -nc 1 \
-        --tag-labels SampleID \
-        --tags my_sample \
+        --tag-labels mylib \
+        --tags A16112 \
         -sites all \
         --sim-method simple \
-        --libs my_lib1 my_lib2 \
+        --libs A16112 \
         -f-mh f_mh.yri \
         --n-qc1 0 \
-        -table OUTPUT_FILE.tsv \
+        -table em_output.A16112.tsv \
         --faunal-der-rate 0.0 \
         --num-em-iters 100 \
-        --ll-surface --nbins 30 --ll-surface-thresh 5
-        
-        
-    --deam-only
+        --ll-surface \
+        --nsteps 0
+
+This command creates the file `em_output.A16112.tsv`:
+
+| rg                | mh_contam  | faunal_prop | nsnps | branchtime | branch | man.max.ll | man.max.ll.last | n.iter | my.t.idx | max.ll     | step.x | mylib  |
+|-------------------|------------|-------------|-------|------------|--------|------------|-----------------|--------|----------|------------|--------|--------|
+| A16112_rg_1_FALSE | 0.01930535 | 4.00E-10    | 1616  | 0.82130775 | v      | -261.27706 | -261.27706      | 13     | 0        | -261.27706 | 0      | A16112 |
+| A16112_rg_1_TRUE  | 6.37E-10   | 9.07E-11    | 886   | 0.82130775 | v      | -261.27706 | -261.27706      | 13     | 0        | -261.27706 | 0      | A16112 |
+
+With the following columns:
+
+| rg              | Read Group - this is a group of reads which   are analyzed together. Typically, this is all deaminated (TRUE) or   non-deaminated (FALSE) reads in one or more libraries.  |
+|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| mh_contam       | Maximum likelihood estimate (MLE) of modern human contamination in this   read group.                                                                                      |
+| faunal_prop     | MLE of faunal contamination in this read group.                                                                                                                            |
+| nsnps           | Number of SNPs in this read group.                                                                                                                                         |
+| branchtime      | MLE branchtime - this is estimated on all read groups together   (typically, deam and non-deam reads of one or more libraries).                                            |
+| branch          | MLE branch.                                                                                                                                                                |
+| man.max.ll      | Log-Likelihood of MLE solutions.                                                                                                                                           |
+| man.max.ll.last | Next-to-last log-likelihood (can be used to identify the change in LL in   the last step).                                                                                 |
+| n.iter          | Number of EM iterations performed.                                                                                                                                         |
+| my.t.idx        | When performing a likelihood surface calculation, which gridpoint is   this?                                                                                               |
+| max.ll          | When performing a likelihood surface calculation, the global maximum LL.                                                                                                   |
+| step.x          | When performing a likelihood surface calculation, the step in the grid   search.                                                                                           |
+| mylib           | Library ID (from column 'lib' in genotypes file).                                                                                                                          |
